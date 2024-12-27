@@ -44,7 +44,7 @@ fn test_runner(tests: &[&dyn Fn()]) {
 #[repr(u32)]
 pub enum QemuExitCode {
     Success = 0x10,
-    Failed = 0x11,
+    Failed =  0x11,
 }
 
 pub fn exit_qemu(exit_code: QemuExitCode) -> ! {

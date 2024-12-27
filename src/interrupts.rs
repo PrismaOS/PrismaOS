@@ -2,7 +2,6 @@ use x86_64::structures::tss::TaskStateSegment;
 use x86_64::structures::gdt::{GlobalDescriptorTable, Descriptor, SegmentSelector};
 use lazy_static::lazy_static;
 
-// Make this public so it can be used by interrupts.rs
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
 lazy_static! {
