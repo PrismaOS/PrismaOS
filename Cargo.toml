@@ -1,38 +1,54 @@
 [package]
 name = "prisma_os"
 version = "0.1.0"
-edition = "2021"
+authors = ["Tristan Poland"]
+edition = "2018"
+
+[[test]]
+name = "should_panic"
+harness = false
+
+[[test]]
+name = "stack_overflow"
+harness = false
 
 [dependencies]
-bootloader-boot-config = { version = "0.11.9", default-features = false }
-bootloader_api = { version = "0.11.9", default-features = false }
-volatile = { version = "0.2.6", default-features = false }
-spin = { version = "0.5.2", default-features = false }
-x86_64 = { version = "0.14.2", default-features = false, features = ["const_fn", "nightly"] }
-uart_16550 = { version = "0.2.0", default-features = false }
-pic8259 = { version = "0.10.1", default-features = false }
-pc-keyboard = { version = "0.5.0", default-features = false }
-lazy_static = { version = "1.4.0", features = ["spin_no_std"], default-features = false }
+bootloader = { version = "0.9", features = ["map_physical_memory"] }
+volatile = "0.2.6"
+spin = "0.5.2"
+x86_64 = "0.14.2"
+uart_16550 = "0.2.0"
+pic8259 = "0.10.1"
+pc-keyboard = "0.7.0"
+linked_list_allocator = "0.10.5"
+embedded-graphics = "0.8.1"
+heapless = "0.7.16"
 
-[build-dependencies]
-bootloader = "0.11.9"
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
 
-[[bin]]
-name = "prisma_os"
-path = "src/main.rs"
+[dependencies.crossbeam-queue]
+version = "0.3.11"
+default-features = false
+features = ["alloc"]
 
-[profile.dev]
-panic = "abort"
+[dependencies.conquer-once]
+version = "0.2.0"
+default-features = false
 
-[profile.release]
-panic = "abort"
+[dependencies.futures-util]
+version = "0.3.4"
+default-features = false
+features = ["alloc"]
 
-[build]
-target = "x86_64-prisma"
-
-[unstable]
-build-std = ["core", "compiler_builtins"]
-build-std-features = ["compiler-builtins-mem"]
-
-[target.'cfg(target_os = "none")']
-runner = "bootimage runner"
+[package.metadata.bootimage]
+test-args = [
+    "-device",
+    "isa-debug-exit,iobase=0xf4,iosize=0x04",
+    "-serial",
+    "stdio",
+    "-display",
+    "none",
+]
+test-success-exit-code = 33 # (0x10 << 1) | 1
