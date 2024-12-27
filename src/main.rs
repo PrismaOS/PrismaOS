@@ -5,13 +5,13 @@
 #![reexport_test_harness_main = "test_main"]
 
 use core::panic::PanicInfo;
-use bootloader::{entry_point, BootInfo};
+use bootloader_api::{entry_point, BootInfo};
 use prisma_os::println;
 
 // Use the entry point macro
 entry_point!(kernel_main);
 
-fn kernel_main(boot_info: &'static BootInfo) -> ! {
+fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     println!("Booting Prisma OS...");
 
     prisma_os::init();
@@ -23,20 +23,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     loop {}
 }
 
-// Our panic handler in non-test mode
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
-    loop {}
-}
-
-// Our panic handler in test mode
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("Failed: {}", info);
-    exit_qemu(QemuExitCode::Failed);
+    println!("PANIC: {}", info);
     loop {}
 }
 
