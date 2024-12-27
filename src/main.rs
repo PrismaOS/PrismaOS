@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
+#![feature(derive_default_enum)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
+#![feature(core_intrinsics)]
 
 use core::panic::PanicInfo;
 use bootloader_api::{entry_point, BootInfo};

@@ -1,8 +1,10 @@
 #![no_std]
 #![cfg_attr(test, no_main)]
+#![feature(derive_default_enum)]
 #![feature(custom_test_frameworks)]
 #![reexport_test_harness_main = "test_main"]
 #![feature(abi_x86_interrupt)]
+#![feature(core_intrinsics)]
 
 pub mod vga_buffer;
 pub mod interrupts;
