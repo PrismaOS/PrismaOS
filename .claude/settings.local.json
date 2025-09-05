@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
