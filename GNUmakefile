@@ -11,7 +11,7 @@ $(call USER_VARIABLE,KARCH,x86_64)
 # Default user QEMU flags. These are appended to the QEMU command calls.
 $(call USER_VARIABLE,QEMUFLAGS,-m 2G)
 
-override IMAGE_NAME := template-$(KARCH)
+override IMAGE_NAME := PrismaOS-$(KARCH)
 
 .PHONY: all
 all: $(IMAGE_NAME).iso
@@ -166,9 +166,146 @@ limine/limine:
 	git clone https://github.com/limine-bootloader/limine.git --branch=v9.x-binary --depth=1
 	$(MAKE) -C limine
 
+# PrismaOS-specific targets
+.PHONY: userspace
+userspace:
+	@echo "Building PrismaOS userspace compositor..."
+	cd userspace/compositor && cargo build --release
+	@echo "Building demo applications..."
+	cd userspace/apps/demo && cargo build --release
+
 .PHONY: kernel
 kernel:
+	@echo "Building PrismaOS kernel..."
 	$(MAKE) -C kernel
+
+.PHONY: kernel-debug  
+kernel-debug:
+	@echo "Building PrismaOS kernel (debug)..."
+	$(MAKE) -C kernel debug
+
+# Setup development environment
+.PHONY: setup
+setup:
+	@echo "Setting up PrismaOS development environment..."
+	@echo "Installing Rust targets..."
+	rustup target add x86_64-unknown-none
+	rustup target add x86_64-unknown-linux-gnu
+	@echo "Installing required tools..."
+	rustup component add rust-src
+	rustup component add llvm-tools-preview
+
+# Test targets
+.PHONY: test
+test:
+	@echo "Running PrismaOS tests..."
+	cd kernel && cargo test --lib --target x86_64-unknown-linux-gnu
+	cd userspace/compositor && cargo test
+	cd userspace/apps/demo && cargo test
+
+.PHONY: test-kernel
+test-kernel:
+	@echo "Running kernel tests..."
+	cd kernel && cargo test --lib --target x86_64-unknown-linux-gnu
+
+# Development utilities
+.PHONY: fmt
+fmt:
+	@echo "Formatting PrismaOS code..."
+	cd kernel && cargo fmt
+	cd userspace/compositor && cargo fmt
+	cd userspace/apps/demo && cargo fmt
+
+.PHONY: lint
+lint:
+	@echo "Linting PrismaOS code..."
+	cd kernel && cargo clippy --target x86_64-unknown-none
+	cd userspace/compositor && cargo clippy
+	cd userspace/apps/demo && cargo clippy
+
+.PHONY: docs
+docs:
+	@echo "Generating PrismaOS documentation..."
+	cd kernel && cargo doc --no-deps --target x86_64-unknown-none
+	cd userspace/compositor && cargo doc --no-deps
+	cd userspace/apps/demo && cargo doc --no-deps
+
+.PHONY: bench
+bench:
+	@echo "Running PrismaOS benchmarks..."
+	cd kernel && cargo bench --target x86_64-unknown-linux-gnu
+
+.PHONY: audit
+audit:
+	@echo "Auditing PrismaOS dependencies..."
+	cd kernel && cargo audit
+	cd userspace/compositor && cargo audit
+
+# Debug with GDB
+.PHONY: debug-gdb
+debug-gdb: kernel-debug $(IMAGE_NAME).iso
+	@echo "Starting PrismaOS debug session with GDB..."
+	qemu-system-$(KARCH) \
+		-M q35 \
+		-cdrom $(IMAGE_NAME).iso \
+		-m 2G \
+		-smp 4 \
+		-vga std \
+		-serial stdio \
+		-s -S &
+	gdb -ex "target remote :1234" \
+		-ex "symbol-file kernel/target/x86_64-unknown-none/debug/kernel"
+
+# Enhanced run targets for PrismaOS
+.PHONY: run-prisma
+run-prisma: $(IMAGE_NAME).iso
+	@echo "Starting PrismaOS..."
+	qemu-system-$(KARCH) \
+		-M q35 \
+		-cdrom $(IMAGE_NAME).iso \
+		-m 2G \
+		-smp 4 \
+		-vga std \
+		-serial stdio \
+		-no-reboot \
+		-no-shutdown \
+		-netdev user,id=net0 \
+		-device e1000,netdev=net0 \
+		$(QEMUFLAGS)
+
+# Build everything including userspace
+.PHONY: all-prisma
+all-prisma: kernel userspace $(IMAGE_NAME).iso
+
+# Help target
+.PHONY: help
+help:
+	@echo "PrismaOS Build System"
+	@echo ""
+	@echo "Build targets:"
+	@echo "  all           - Build kernel and create ISO"
+	@echo "  all-prisma    - Build kernel, userspace, and create ISO"  
+	@echo "  kernel        - Build kernel only"
+	@echo "  userspace     - Build userspace compositor and apps"
+	@echo "  kernel-debug  - Build kernel with debug symbols"
+	@echo ""
+	@echo "Run targets:"
+	@echo "  run           - Run with UEFI firmware"
+	@echo "  run-prisma    - Run PrismaOS with enhanced QEMU settings"
+	@echo "  run-bios      - Run with legacy BIOS"
+	@echo "  debug-gdb     - Start debug session with GDB"
+	@echo ""
+	@echo "Development targets:"
+	@echo "  test          - Run all tests"
+	@echo "  fmt           - Format all code"
+	@echo "  lint          - Lint all code"  
+	@echo "  docs          - Generate documentation"
+	@echo "  bench         - Run benchmarks"
+	@echo "  audit         - Security audit dependencies"
+	@echo "  setup         - Setup development environment"
+	@echo ""
+	@echo "Architecture support: x86_64 (default), aarch64, riscv64, loongarch64"
+	@echo "Set KARCH=<arch> to build for different architecture"
 
 $(IMAGE_NAME).iso: limine/limine kernel
 	rm -rf iso_root
@@ -242,10 +379,14 @@ endif
 
 .PHONY: clean
 clean:
+	@echo "Cleaning PrismaOS build artifacts..."
 	$(MAKE) -C kernel clean
+	cd userspace/compositor && cargo clean
+	cd userspace/apps/demo && cargo clean
 	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
 
 .PHONY: distclean
 distclean: clean
+	@echo "Deep cleaning PrismaOS..."
 	$(MAKE) -C kernel distclean
 	rm -rf limine ovmf
