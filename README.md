@@ -1,33 +1,69 @@
-# Limine Rust Template
+# PrismaOS
 
-This repository will demonstrate how to set up a basic kernel in Rust using Limine.
+A modern, high-performance operating system kernel written in Rust, featuring object-based IPC, multithreaded compositor, and exclusive display ownership for ultra-low latency applications.
 
-## How to use this?
+## Features
 
-### Dependencies
+### Core Kernel
+- **Memory Management**: Virtual memory with paging, heap allocation, zero-copy buffer sharing
+- **Task Scheduling**: Preemptive multitasking with async/await executor
+- **Object-Based IPC**: Typed, capability-based inter-process communication (not string-based Unix messages)
+- **Device Drivers**: Framebuffer, keyboard, mouse, timer, and interrupt handling
+- **Security**: Capability-based handles, fine-grained permissions, secure syscall interface
 
-Any `make` command depends on GNU make (`gmake`) and is expected to be run using it. This usually means using `make` on most GNU/Linux distros, or `gmake` on other non-GNU systems.
+### Compositor & Graphics
+- **Multithreaded Compositor**: High-performance window manager with double-buffering
+- **Software Rendering**: Alpha blending, damage tracking, multiple pixel formats
+- **Exclusive Display Access**: Ultra-low latency mode for games/VR (< 3-4ms extra latency)
+- **Input Management**: Mouse, keyboard with proper focus handling and event routing
+- **Multiple Display Modes**: Windowed, exclusive fullscreen, direct hardware plane access
 
-All `make all*` targets depend on Rust.
+### Object-Based IPC System
+- **Surface Objects**: Window surfaces with attach_buffer(), commit(), set_scale() methods
+- **Buffer Objects**: Shared memory buffers with zero-copy semantics  
+- **EventStream Objects**: Input event delivery with poll_event(), async streaming
+- **Display Objects**: Hardware display control with exclusive ownership
+- **Capability Handles**: Secure, revocable object references with fine-grained rights
 
-Additionally, building an ISO with `make all` requires `xorriso`, and building a HDD/USB image with `make all-hdd` requires `sgdisk` (usually from `gdisk` or `gptfdisk` packages) and `mtools`.
+### Low-Latency Graphics Pipeline
+- **Direct Framebuffer Access**: Bypass compositor for maximum performance
+- **Hardware Plane Support**: Direct-to-scanout rendering for VR/gaming
+- **Vsync Control**: Disable vsync for uncapped frame rates
+- **Custom Refresh Rates**: Dynamic display timing for specialized applications
+- **Zero-Copy Rendering**: Minimize memory bandwidth and CPU overhead
 
-### Architectural targets
+## Building
 
-The `KARCH` make variable determines the target architecture to build the kernel and image for.
+### Prerequisites
+- Rust toolchain (stable)
+- QEMU for testing
+- xorriso for ISO creation
+- GDB for debugging
 
-The default `KARCH` is `x86_64`. Other options include: `aarch64`, `riscv64`, and `loongarch64`.
+### Setup Development Environment
+```bash
+make setup
+```
 
-Other architectures will need to be enabled in kernel/rust-toolchain.toml
+### Build and Run
+```bash
+# Build everything
+make all
 
-### Makefile targets
+# Create bootable ISO and run in QEMU
+make run
 
-Running `make all` will compile the kernel (from the `kernel/` directory) and then generate a bootable ISO image.
+# Debug with GDB
+make debug
 
-Running `make all-hdd` will compile the kernel and then generate a raw image suitable to be flashed onto a USB stick or hard drive/SSD.
+# Run tests
+make test
+```
 
-Running `make run` will build the kernel and a bootable ISO (equivalent to make all) and then run it using `qemu` (if installed).
+## Performance Goals
 
-Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to make all-hdd) and then run it using `qemu` (if installed).
-
-The `run-uefi` and `run-hdd-uefi` targets are equivalent to their non `-uefi` counterparts except that they boot `qemu` using a UEFI-compatible firmware.
+- **Frame Latency**: < 16ms for windowed mode, < 3-4ms for exclusive mode
+- **Context Switch**: < 5μs typical
+- **IPC Round-trip**: < 10μs for typed object calls
+- **Memory Allocation**: Buddy allocator for pages, slab for small objects
+- **Interrupt Latency**: < 100μs worst-case

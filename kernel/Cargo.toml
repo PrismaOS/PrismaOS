@@ -30,3 +30,11 @@ features = ["derive", "alloc"]
 version = "1.0"
 default-features = false
 features = ["alloc"]
+
+[dependencies.lazy_static]
+version = "1.0"
+features = ["spin_no_std"]
+
+[dependencies.bootloader]
+version = "0.9"
+optional = true

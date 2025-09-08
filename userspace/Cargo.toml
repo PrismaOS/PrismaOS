@@ -1,0 +1,17 @@
+[package]
+name = "userspace"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+postcard = { version = "1.0", default-features = false, features = ["alloc"] }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+spin = "0.9"
+
+[dependencies.heapless]
+version = "0.8"
+default-features = false
+
+[workspace]
+members = ["compositor", "apps/demo", "apps/terminal", "common"]
