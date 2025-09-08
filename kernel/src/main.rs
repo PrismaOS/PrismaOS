@@ -6,9 +6,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
-use core::panic::PanicInfo;
-use bootloader::{BootInfo, entry_point};
+use alloc::{boxed::Box, rc::Rc, vec, vec::Vec, format};
 
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker, HhdmRequest, MemoryMapRequest};
@@ -18,6 +16,9 @@ mod interrupts;
 mod memory;
 mod executor;
 mod api;
+mod scheduler;
+mod drivers;
+mod time;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -79,6 +80,22 @@ unsafe extern "C" fn kmain() -> ! {
 
     #[cfg(test)]
     test_main();
+
+    // Initialize SMP scheduler
+    scheduler::smp::init_smp();
+    scheduler::init_scheduler(scheduler::smp::cpu_count());
+
+    // Initialize device subsystem
+    drivers::init_devices();
+
+    // Initialize framebuffer driver with Limine response
+    if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
+        if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
+            if let Err(e) = drivers::framebuffer::init_global_framebuffer(framebuffer) {
+                println!("Failed to initialize framebuffer: {:?}", e);
+            }
+        }
+    }
 
     println!("Initializing compositor and demo application...");
     

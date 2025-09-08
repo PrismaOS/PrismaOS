@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(wsl:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []
