@@ -1,7 +1,32 @@
 [package]
 name = "kernel"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 limine = "0.5"
+spin = "0.9"
+linked_list_allocator = "0.10"
+x86_64 = "0.15"
+volatile = "0.4"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
+conquer-once = { version = "0.4", default-features = false }
+crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
+pc-keyboard = "0.7"
+pic8259 = "0.10"
+uart_16550 = "0.3"
+acpi = "5.0"
+
+[dependencies.heapless]
+version = "0.8"
+default-features = false
+
+[dependencies.serde]
+version = "1.0"
+default-features = false
+features = ["derive", "alloc"]
+
+[dependencies.postcard]
+version = "1.0"
+default-features = false
+features = ["alloc"]

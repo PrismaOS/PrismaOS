@@ -2,6 +2,7 @@
 #![no_main]
 
 use core::arch::asm;
+use core::ptr;
 
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
@@ -35,6 +36,21 @@ unsafe extern "C" fn kmain() -> ! {
 
     if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
+            // Try to get refresh rate from framebuffer (Limine does not provide this, so fallback)
+            fn get_refresh_rate() -> u32 {
+                // If Limine ever provides refresh rate, use it here
+                // For now, fallback to 60Hz for testing
+                240
+            }
+
+            // Simple software delay for frame limiting
+            fn wait_for_frame(refresh_rate: u32) {
+                // Calibrate this value for your hardware; it's a rough delay
+                let delay = 100_000 / refresh_rate;
+                for _ in 0..delay {
+                    unsafe { asm!("nop"); }
+                }
+            }
             // Simple HSV to RGB conversion
             fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
                 let h = h % 360.0;
@@ -62,6 +78,7 @@ unsafe extern "C" fn kmain() -> ! {
             let addr = framebuffer.addr();
 
             let mut frame = 0u32;
+            let refresh_rate = get_refresh_rate();
             loop {
                 for y in 0..height {
                     for x in 0..width {
@@ -79,6 +96,7 @@ unsafe extern "C" fn kmain() -> ! {
                     }
                 }
                 frame = frame.wrapping_add(1);
+                wait_for_frame(refresh_rate);
             }
         }
     }
@@ -86,6 +104,7 @@ unsafe extern "C" fn kmain() -> ! {
     hcf();
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 fn rust_panic(_info: &core::panic::PanicInfo) -> ! {
     hcf();
