@@ -95,7 +95,7 @@ static mut KERNEL_STACK: Aligned<[u8; 32 * 1024]> = Aligned([0; 32 * 1024]);
 static mut IST1_STACK:  Aligned<[u8; 8 * 1024]>  = Aligned([0; 8 * 1024]);
 
 static mut GDT: Aligned<Gdt> = Aligned(Gdt {
-    null: GdtEntry { limit_low:0, base_low:0, base_mid:0, access:0, granularity:0, base_high:0 },
+    null:  GdtEntry { limit_low:0, base_low:0, base_mid:0, access:0, granularity:0, base_high:0 },
     kcode: GdtEntry { limit_low:0, base_low:0, base_mid:0, access:0, granularity:0, base_high:0 },
     kdata: GdtEntry { limit_low:0, base_low:0, base_mid:0, access:0, granularity:0, base_high:0 },
     ucode: GdtEntry { limit_low:0, base_low:0, base_mid:0, access:0, granularity:0, base_high:0 },

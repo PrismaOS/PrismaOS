@@ -5,6 +5,7 @@ use core::arch::asm;
 
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
+use core::f32::consts::PI;
 
 /// Sets the base revision to the latest revision supported by the crate.
 /// See specification for further info.
@@ -34,19 +35,50 @@ unsafe extern "C" fn kmain() -> ! {
 
     if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
-            for i in 0..100_u64 {
-                // Calculate the pixel offset using the framebuffer information we obtained above.
-                // We skip `i` scanlines (pitch is provided in bytes) and add `i * 4` to skip `i` pixels forward.
-                let pixel_offset = i * framebuffer.pitch() + i * 4;
-
-                // Write 0xFFFFFFFF to the provided pixel offset to fill it white.
-                unsafe {
-                    framebuffer
-                        .addr()
-                        .add(pixel_offset as usize)
-                        .cast::<u32>()
-                        .write(0xFFFFFFFF)
+            // Simple HSV to RGB conversion
+            fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+                let h = h % 360.0;
+                let c = v * s;
+                let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+                let m = v - c;
+                let (r1, g1, b1) = match h as u32 {
+                    0..=59 => (c, x, 0.0),
+                    60..=119 => (x, c, 0.0),
+                    120..=179 => (0.0, c, x),
+                    180..=239 => (0.0, x, c),
+                    240..=299 => (x, 0.0, c),
+                    _ => (c, 0.0, x),
                 };
+                (
+                    ((r1 + m) * 255.0) as u8,
+                    ((g1 + m) * 255.0) as u8,
+                    ((b1 + m) * 255.0) as u8,
+                )
+            }
+
+            let width = framebuffer.width();
+            let height = framebuffer.height();
+            let pitch = framebuffer.pitch();
+            let addr = framebuffer.addr();
+
+            let mut frame = 0u32;
+            loop {
+                for y in 0..height {
+                    for x in 0..width {
+                        // Moving rainbow gradient: hue depends on x, y, and frame
+                        let hue = ((x as f32 + y as f32 + frame as f32 * 2.0) % 360.0) as f32;
+                        let (r, g, b) = hsv_to_rgb(hue, 1.0, 1.0);
+                        let color = ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+
+                        let pixel_offset = y * pitch + x * 4;
+                        unsafe {
+                            addr.add(pixel_offset as usize)
+                                .cast::<u32>()
+                                .write(color);
+                        }
+                    }
+                }
+                frame = frame.wrapping_add(1);
             }
         }
     }
