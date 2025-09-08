@@ -169,7 +169,7 @@ impl PciManager {
             subclass: 0x00,
             prog_if: 0x00,
             revision: 0x02,
-            base_addresses: vec![0xC0000000],
+            base_addresses: alloc::vec![0xC0000000],
             irq_line: Some(11),
             name: "Intel 82540EM Ethernet",
         });
@@ -181,7 +181,7 @@ impl PciManager {
             subclass: 0x00,
             prog_if: 0x00,
             revision: 0x02,
-            base_addresses: vec![0xD0000000],
+            base_addresses: alloc::vec![0xD0000000],
             irq_line: Some(10),
             name: "QEMU VGA",
         });

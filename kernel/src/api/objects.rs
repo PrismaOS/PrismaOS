@@ -91,7 +91,7 @@ impl Buffer {
         let size = (stride * height) as usize;
 
         Buffer {
-            data: vec![0; size],
+            data: alloc::vec![0; size],
             width,
             height,
             stride,

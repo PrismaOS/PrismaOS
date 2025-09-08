@@ -3,7 +3,9 @@
     "allow": [
       "Bash(wsl:*)",
       "Bash(cat:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(make:*)",
+      "Bash(cargo build:*)"
     ],
     "deny": [],
     "ask": []

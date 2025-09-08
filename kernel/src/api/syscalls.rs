@@ -253,7 +253,7 @@ pub unsafe fn enable_syscalls() {
 
 use x86_64::VirtAddr;
 
-#[naked]
+#[unsafe(naked)]
 unsafe extern "C" fn syscall_entry() {
     asm!(
         "push rbp",

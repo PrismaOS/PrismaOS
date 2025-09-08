@@ -134,7 +134,7 @@ impl Process {
         let context = ProcessContext::new(entry_point, stack_base, page_table);
         
         let mut name = [0u8; 32];
-        let name_str = format!("process_{}", id.as_u64());
+        let name_str = alloc::format!("process_{}", id.as_u64());
         let name_bytes = name_str.as_bytes();
         let copy_len = name_bytes.len().min(31);
         name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
