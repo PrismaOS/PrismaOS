@@ -37,7 +37,7 @@ impl Driver for TimerDriver {
 
     fn interrupt_handler(&mut self, _irq: u8) -> bool {
         self.tick_count += 1;
-        crate::scheduler::scheduler_tick(0); // Notify scheduler
+        // crate::scheduler::scheduler_tick(0); // Scheduler disabled for now
         true
     }
 

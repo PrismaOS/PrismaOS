@@ -25,7 +25,7 @@ impl FramebufferDriver {
     }
 
     /// Initialize framebuffer with Limine response
-    pub fn init_with_limine(&mut self, framebuffer: &limine::response::Framebuffer) -> Result<(), DriverError> {
+    pub fn init_with_limine(&mut self, framebuffer: &limine::framebuffer::Framebuffer) -> Result<(), DriverError> {
         self.base_addr = Some(framebuffer.addr() as *mut u8);
         self.width = framebuffer.width() as u32;
         self.height = framebuffer.height() as u32;
@@ -204,7 +204,7 @@ pub struct FramebufferInfo {
 // Global framebuffer driver instance for easy access
 static FRAMEBUFFER: Mutex<Option<FramebufferDriver>> = Mutex::new(None);
 
-pub fn init_global_framebuffer(framebuffer: &limine::response::Framebuffer) -> Result<(), DriverError> {
+pub fn init_global_framebuffer(framebuffer: &limine::framebuffer::Framebuffer) -> Result<(), DriverError> {
     let mut fb = FramebufferDriver::new();
     fb.init_with_limine(framebuffer)?;
     *FRAMEBUFFER.lock() = Some(fb);
@@ -222,12 +222,9 @@ pub fn with_framebuffer<R>(f: impl FnOnce(&FramebufferDriver) -> R) -> Option<R>
 
 pub fn with_framebuffer_mut<R>(f: impl FnOnce(&mut FramebufferDriver) -> R) -> Option<R> {
     // Note: This is not actually mutable due to the static, but provides the interface
-    let fb_guard = FRAMEBUFFER.lock();
-    if let Some(ref fb) = *fb_guard {
-        // Cast away const for the interface - in a real implementation, 
-        // this would need proper mutable access
-        let fb_mut = unsafe { &mut *(fb as *const _ as *mut _) };
-        Some(f(fb_mut))
+    let mut fb_guard = FRAMEBUFFER.lock();
+    if let Some(ref mut fb) = *fb_guard {
+        Some(f(fb))
     } else {
         None
     }

@@ -104,10 +104,16 @@ impl ObjectRegistry {
             return Err(RegistryError::RegistryFull);
         }
 
-        capabilities
-            .entry(owner)
-            .or_insert_with(Vec::new)
-            .push(capability);
+        match capabilities.entry(owner) {
+            heapless::Entry::Occupied(mut entry) => {
+                entry.get_mut().push(capability);
+            }
+            heapless::Entry::Vacant(entry) => {
+                let mut caps = Vec::new();
+                caps.push(capability);
+                entry.insert(caps).map_err(|_| RegistryError::RegistryFull)?;
+            }
+        }
 
         Ok(handle)
     }
@@ -168,10 +174,16 @@ impl ObjectRegistry {
             owner: to,
         };
 
-        capabilities
-            .entry(to)
-            .or_insert_with(Vec::new)
-            .push(new_capability);
+        match capabilities.entry(to) {
+            heapless::Entry::Occupied(mut entry) => {
+                entry.get_mut().push(new_capability);
+            }
+            heapless::Entry::Vacant(entry) => {
+                let mut caps = Vec::new();
+                caps.push(new_capability);
+                entry.insert(caps).map_err(|_| RegistryError::RegistryFull)?;
+            }
+        }
 
         Ok(())
     }

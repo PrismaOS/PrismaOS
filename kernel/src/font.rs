@@ -1,9 +1,8 @@
-// Minimal PSF1 font renderer for framebuffer
-
 #[link_section = ".rodata"]
 #[no_mangle]
 pub static FONT_PSF: [u8; include_bytes!("../../lat9-16.psf").len()] = *include_bytes!("../../lat9-16.psf");
 
+#[derive(Clone, Copy)]
 pub struct PsfFont<'a> {
     pub glyphs: &'a [u8],
     pub charsize: usize,

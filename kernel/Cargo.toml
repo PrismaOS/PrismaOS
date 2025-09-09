@@ -38,3 +38,9 @@ features = ["spin_no_std"]
 [dependencies.bootloader]
 version = "0.9"
 optional = true
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

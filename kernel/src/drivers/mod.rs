@@ -246,7 +246,7 @@ fn init_core_drivers() {
     if let Err(e) = dm.register_driver(kbd_driver.clone()) {
         crate::println!("Failed to register keyboard driver: {:?}", e);
     } else {
-        dm.register_irq_handler(1, kbd_driver); // IRQ 1 for keyboard
+        dm.register_irq_handler(33, kbd_driver); // IRQ 33 (32+1) for keyboard
     }
     
     // Register mouse driver
@@ -254,7 +254,7 @@ fn init_core_drivers() {
     if let Err(e) = dm.register_driver(mouse_driver.clone()) {
         crate::println!("Failed to register mouse driver: {:?}", e);
     } else {
-        dm.register_irq_handler(12, mouse_driver); // IRQ 12 for PS/2 mouse
+        dm.register_irq_handler(44, mouse_driver); // IRQ 44 (32+12) for PS/2 mouse
     }
     
     // Register timer driver
@@ -262,6 +262,6 @@ fn init_core_drivers() {
     if let Err(e) = dm.register_driver(timer_driver.clone()) {
         crate::println!("Failed to register timer driver: {:?}", e);
     } else {
-        dm.register_irq_handler(0, timer_driver); // IRQ 0 for PIT timer
+        dm.register_irq_handler(32, timer_driver); // IRQ 32 (32+0) for PIT timer
     }
 }
