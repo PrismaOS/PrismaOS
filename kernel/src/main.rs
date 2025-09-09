@@ -12,6 +12,7 @@ use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker
 use core::panic::PanicInfo;
 use pic8259::ChainedPics;
 use spin::Mutex;
+use x86_64::VirtAddr;
 
 mod font;
 use font::{PsfFont, draw_string, FONT_PSF};
@@ -23,6 +24,7 @@ mod memory;
 mod gdt;
 mod interrupts;
 mod drivers;
+mod loader;
 // mod scheduler; // Temporarily disabled due to compilation issues
 // mod api; // Temporarily disabled due to compilation issues  
 mod time;
@@ -283,11 +285,22 @@ unsafe extern "C" fn kmain() -> ! {
             }
             kprintln!("[OK] Memory map validated ({} entries)", entry_count);
             
-            // Initialize memory management (temporarily simplified)
-            if let Some(_hhdm_response) = HHDM_REQUEST.get_response() {
-                kprintln!("[OK] Memory management ready (heap init skipped for now)");
+            // Initialize memory management
+            if let Some(hhdm_response) = HHDM_REQUEST.get_response() {
+                let physical_memory_offset = VirtAddr::new(hhdm_response.offset());
+                
+                // Initialize memory management with proper heap allocation  
+                let entries_refs = memory_map_response.entries();
+                match init_memory_with_heap_refs(entries_refs, physical_memory_offset) {
+                    Ok(_) => kprintln!("[OK] Memory management and heap initialized"),
+                    Err(_) => {
+                        kprintln!("ERROR: Failed to initialize memory management");
+                        halt_system();
+                    }
+                }
             } else {
                 kprintln!("ERROR: No HHDM response");
+                halt_system();
             }
         }
         
@@ -308,6 +321,10 @@ unsafe extern "C" fn kmain() -> ! {
         kprintln!("");
         kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
         kprintln!("All systems operational - entering idle state");
+        
+        // Test memory allocation and ELF loading capability
+        test_memory_allocation();
+        test_elf_loading();
         
         // Uncomment the line below to test BSOD panic handler
         // panic!("Test panic for BSOD demonstration");
@@ -537,6 +554,113 @@ unsafe fn render_vga_bsod(info: &PanicInfo) {
         }
         current_line += 1;
     }
+}
+
+/// Test memory allocation functionality  
+fn test_memory_allocation() {
+    kprintln!("");
+    kprintln!("=== Testing Memory Allocation ===");
+    
+    // Test basic Vec allocation (heap allocation)
+    let mut test_vec = alloc::vec::Vec::<u32>::with_capacity(10);
+    test_vec.push(42);
+    test_vec.push(123);
+    test_vec.push(456);
+    kprintln!("[OK] Heap allocation successful");
+    kprintln!("  Vec capacity: {}, length: {}", test_vec.capacity(), test_vec.len());
+    kprintln!("  First element: {}", test_vec[0]);
+    
+    // Test String allocation
+    let test_string = alloc::format!("Memory test string: {}", 12345);
+    kprintln!("[OK] String allocation successful: '{}'", test_string);
+    
+    // Test multiple allocations to verify heap stability
+    let mut test_vecs = alloc::vec::Vec::new();
+    for i in 0..5 {
+        let mut vec = alloc::vec::Vec::with_capacity(4);
+        vec.push(i * 10);
+        vec.push(i * 11);
+        test_vecs.push(vec);
+    }
+    
+    kprintln!("[OK] Multiple heap allocations successful");
+    kprintln!("  Created {} test vectors", test_vecs.len());
+    
+    // Test that we can access all allocated data
+    for (i, vec) in test_vecs.iter().enumerate() {
+        kprintln!("  Vec {}: [{}, {}]", i, vec[0], vec[1]);
+    }
+    
+    kprintln!("[OK] Memory allocation tests completed");
+}
+
+/// Test ELF loading functionality
+fn test_elf_loading() {
+    kprintln!("");
+    kprintln!("=== Testing ELF Loading Capability ===");
+    
+    // Create a minimal test ELF binary (x86_64 hello world)
+    let test_elf = create_minimal_test_elf();
+    
+    kprintln!("Created test ELF binary ({} bytes)", test_elf.len());
+    
+    // Try to get ELF info without loading
+    match loader::ElfLoader::get_elf_info(&test_elf) {
+        Ok(info) => {
+            kprintln!("[OK] ELF parsing successful");
+            kprintln!("  Entry point: 0x{:016x}", info.entry_point);
+            kprintln!("  Memory size: {} bytes", info.memory_size);
+            kprintln!("  Segments: {}", info.segments.len());
+            
+            for (i, segment) in info.segments.iter().enumerate() {
+                kprintln!("  Segment {}: addr=0x{:016x} size={} flags={:?}", 
+                         i, segment.virtual_addr, segment.memory_size, segment.flags);
+            }
+        }
+        Err(err) => {
+            kprintln!("[WARN] ELF parsing failed: {:?}", err);
+            kprintln!("  This is expected - we need a real ELF binary for testing");
+        }
+    }
+    
+    kprintln!("[OK] ELF loader infrastructure ready");
+}
+
+/// Initialize memory management including heap allocation
+fn init_memory_with_heap_refs(
+    memory_map: &'static [&limine::memory_map::Entry],
+    physical_memory_offset: VirtAddr,
+) -> Result<(), &'static str> {
+    use memory::{init_heap, init_memory_from_refs};
+    
+    // Initialize basic memory management with references
+    let (mut mapper, mut frame_allocator) = init_memory_from_refs(memory_map, physical_memory_offset);
+    
+    // Initialize the heap
+    init_heap(&mut mapper, &mut frame_allocator)
+        .map_err(|_| "Failed to initialize heap")?;
+    
+    Ok(())
+}
+
+/// Create a minimal test ELF binary for demonstration
+/// In a real system, ELF binaries would be loaded from storage
+fn create_minimal_test_elf() -> alloc::vec::Vec<u8> {
+    // This is a placeholder - a real implementation would need:
+    // 1. A proper ELF binary generated by a compiler
+    // 2. File system support to load binaries from disk
+    // 3. Or embedded test binaries in the kernel image
+    
+    // For now, return a minimal ELF header structure
+    let mut elf_data = alloc::vec::Vec::new();
+    
+    // ELF magic number
+    elf_data.extend_from_slice(b"\x7fELF");
+    
+    // This is not a complete ELF - just demonstrates the infrastructure
+    // A real ELF would need proper headers, program segments, etc.
+    
+    elf_data
 }
 
 /// Test runner

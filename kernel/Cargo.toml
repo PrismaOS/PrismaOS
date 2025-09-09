@@ -16,6 +16,7 @@ pc-keyboard = "0.7"
 pic8259 = "0.10"
 uart_16550 = "0.3"
 acpi = "5.0"
+elf = { version = "0.7", default-features = false }
 
 [dependencies.heapless]
 version = "0.8"

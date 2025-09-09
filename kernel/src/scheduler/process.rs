@@ -8,6 +8,18 @@ use x86_64::{
 
 use super::{ProcessState, BlockReason};
 
+#[derive(Debug)]
+pub enum ProcessLoadError {
+    ElfLoadError(crate::loader::ElfLoadError),
+    SchedulerError(super::SchedulerError),
+}
+
+impl From<super::SchedulerError> for ProcessLoadError {
+    fn from(err: super::SchedulerError) -> Self {
+        ProcessLoadError::SchedulerError(err)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProcessId(u64);
 
@@ -135,6 +147,65 @@ impl Process {
         
         let mut name = [0u8; 32];
         let name_str = alloc::format!("process_{}", id.as_u64());
+        let name_bytes = name_str.as_bytes();
+        let copy_len = name_bytes.len().min(31);
+        name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
+        
+        Ok(Process {
+            id,
+            context: Mutex::new(context),
+            state: RwLock::new(ProcessState::Ready),
+            priority: AtomicU8::new(priority),
+            assigned_cpu: AtomicUsize::new(0),
+            creation_time: current_time,
+            total_runtime: AtomicU64::new(0),
+            last_scheduled: AtomicU64::new(0),
+            page_table,
+            stack_base,
+            heap_base,
+            name: RwLock::new(name),
+            parent_pid: None,
+            exit_code: RwLock::new(None),
+            block_reason: RwLock::new(None),
+            capability_table: RwLock::new(Vec::new()),
+            file_descriptors: RwLock::new(Vec::new()),
+            context_switches: AtomicU64::new(0),
+            page_faults: AtomicU64::new(0),
+            syscalls: AtomicU64::new(0),
+        })
+    }
+
+    /// Create a new process from an ELF binary
+    pub fn from_elf<M, A>(
+        elf_data: &[u8],
+        priority: u8,
+        mapper: &mut M,
+        frame_allocator: &mut A,
+    ) -> Result<Self, ProcessLoadError>
+    where
+        M: x86_64::structures::paging::Mapper<x86_64::structures::paging::Size4KiB>,
+        A: x86_64::structures::paging::FrameAllocator<x86_64::structures::paging::Size4KiB>,
+    {
+        use crate::loader::ElfLoader;
+        
+        // Load the ELF binary
+        let loaded_program = ElfLoader::load_elf(elf_data, mapper, frame_allocator)
+            .map_err(ProcessLoadError::ElfLoadError)?;
+        
+        let id = ProcessId::new();
+        let current_time = crate::time::current_tick();
+        
+        // Use the loaded program's memory layout
+        let entry_point = loaded_program.entry_point;
+        let stack_base = loaded_program.stack_top;
+        let heap_base = loaded_program.heap_base;
+        
+        // Create page table (this should be properly implemented to use the mapper's page table)
+        let page_table = Self::allocate_page_table()?;
+        let context = ProcessContext::new(entry_point, stack_base, page_table);
+        
+        let mut name = [0u8; 32];
+        let name_str = alloc::format!("elf_proc_{}", id.as_u64());
         let name_bytes = name_str.as_bytes();
         let copy_len = name_bytes.len().min(31);
         name[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
