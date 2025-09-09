@@ -318,7 +318,14 @@ unsafe extern "C" fn kmain() -> ! {
 
     // Safe idle loop
     loop {
-        core::arch::asm!("hlt");
+        kprintln!("System idle. Halting CPU...");
+        // nostd sleep 1s
+        // Sleep for ~1 second using a busy loop (no std, no timer yet)
+        // This is approximate and depends on CPU speed.
+        for _ in 0..50_000_000 {
+            core::arch::asm!("nop");
+        }
+        //core::arch::asm!("hlt");
     }
 }
 
