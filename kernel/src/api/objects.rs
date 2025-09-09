@@ -3,6 +3,7 @@ use core::any::Any;
 use serde::{Deserialize, Serialize};
 use spin::RwLock;
 use volatile::Volatile;
+use crate::memory::dma::{DmaBuffer, BufferId};
 
 use super::{InputEvent, ObjectHandle, PixelFormat};
 
@@ -74,11 +75,17 @@ pub struct Rect {
 
 #[derive(Debug)]
 pub struct Buffer {
-    pub data: Vec<u8>,
+    pub data: BufferData,
     pub width: u32,
     pub height: u32,
     pub stride: u32,
     pub format: PixelFormat,
+}
+
+#[derive(Debug)]
+pub enum BufferData {
+    Owned(Vec<u8>),
+    Dma(Arc<DmaBuffer>),
 }
 
 impl Buffer {
@@ -91,7 +98,7 @@ impl Buffer {
         let size = (stride * height) as usize;
 
         Buffer {
-            data: alloc::vec![0; size],
+            data: BufferData::Owned(alloc::vec![0; size]),
             width,
             height,
             stride,
@@ -99,12 +106,58 @@ impl Buffer {
         }
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        &self.data
+    /// Create a buffer from a DMA buffer for zero-copy sharing
+    pub fn from_dma_buffer(dma_buffer: Arc<DmaBuffer>) -> Self {
+        // Calculate dimensions based on buffer size
+        // This is a simplified approach - real implementation would
+        // need proper metadata about the buffer's intended format
+        let size = dma_buffer.size();
+        let bytes_per_pixel = 4; // Assume RGBA8888
+        let width = 256u32; // Fixed assumption for now
+        let height = size as u32 / (width * bytes_per_pixel);
+        let stride = width * bytes_per_pixel;
+
+        Buffer {
+            data: BufferData::Dma(dma_buffer),
+            width,
+            height, 
+            stride,
+            format: PixelFormat::Rgba8888,
+        }
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut self.data
+    pub fn size(&self) -> usize {
+        match &self.data {
+            BufferData::Owned(vec) => vec.len(),
+            BufferData::Dma(dma) => dma.size(),
+        }
+    }
+
+    pub fn is_dma_buffer(&self) -> bool {
+        matches!(self.data, BufferData::Dma(_))
+    }
+
+    pub fn get_dma_buffer(&self) -> Option<&Arc<DmaBuffer>> {
+        match &self.data {
+            BufferData::Dma(dma) => Some(dma),
+            _ => None,
+        }
+    }
+
+    // Note: Direct slice access is only available for owned buffers
+    // DMA buffers need to be mapped to virtual memory first
+    pub fn as_slice(&self) -> Option<&[u8]> {
+        match &self.data {
+            BufferData::Owned(vec) => Some(vec),
+            BufferData::Dma(_) => None, // Requires mapping
+        }
+    }
+
+    pub fn as_mut_slice(&mut self) -> Option<&mut [u8]> {
+        match &mut self.data {
+            BufferData::Owned(vec) => Some(vec),
+            BufferData::Dma(_) => None, // Requires mapping
+        }
     }
 }
 

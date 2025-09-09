@@ -10,6 +10,7 @@ use x86_64::{
 pub mod process;
 pub mod cpu;
 pub mod smp;
+pub mod switch;
 
 use process::*;
 use cpu::*;

@@ -9,6 +9,7 @@ use spin::{Mutex, RwLock};
 
 pub mod objects;
 pub mod syscalls;
+pub mod syscall_entry;
 
 use objects::*;
 
@@ -27,7 +28,7 @@ impl ObjectHandle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ProcessId(u64);
+pub struct ProcessId(pub u64);
 
 impl ProcessId {
     pub fn new() -> Self {

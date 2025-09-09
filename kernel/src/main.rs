@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(alloc_error_handler)]
 #![feature(custom_test_frameworks)]
 #![feature(abi_x86_interrupt)]
 #![test_runner(crate::test_runner)]
@@ -23,9 +24,11 @@ mod memory;
 mod gdt;
 mod interrupts;
 mod drivers;
-// mod scheduler; // Temporarily disabled due to compilation issues
-// mod api; // Temporarily disabled due to compilation issues  
+mod scheduler;
+mod api;
+mod executor;
 mod time;
+mod events;
 
 // Re-export our kernel printing macros as standard names for module compatibility
 #[macro_export]
@@ -262,6 +265,12 @@ unsafe extern "C" fn kmain() -> ! {
         // Step 3: Initialize kernel subsystems
         kprintln!("Initializing kernel subsystems...");
         
+        // Initialize bootstrap heap for early allocations
+        unsafe {
+            memory::init_bootstrap_heap();
+        }
+        kprintln!("[OK] Bootstrap heap initialized (64KB)");
+        
         // Initialize GDT (Global Descriptor Table)
         gdt::init();
         kprintln!("[OK] GDT initialized");
@@ -274,22 +283,54 @@ unsafe extern "C" fn kmain() -> ! {
         unsafe { PICS.lock().initialize() };
         kprintln!("[OK] PIC initialized (IRQ 32-47)");
         
-        // Validate critical system components
+        // Initialize memory management
         if let Some(memory_map_response) = MEMORY_MAP_REQUEST.get_response() {
-            let entry_count = memory_map_response.entries().len();
+            let memory_entries = memory_map_response.entries();
+            let entry_count = memory_entries.len();
             if entry_count == 0 {
                 kprintln!("ERROR: No memory map");
                 halt_system();
             }
             kprintln!("[OK] Memory map validated ({} entries)", entry_count);
             
-            // Initialize memory management (temporarily simplified)
-            if let Some(_hhdm_response) = HHDM_REQUEST.get_response() {
-                kprintln!("[OK] Memory management ready (heap init skipped for now)");
+            if let Some(hhdm_response) = HHDM_REQUEST.get_response() {
+                let phys_mem_offset = x86_64::VirtAddr::new(hhdm_response.offset());
+                kprintln!("[OK] Physical memory offset: {:#x}", phys_mem_offset.as_u64());
+                
+                // Initialize paging and frame allocator  
+                let (mut mapper, mut frame_allocator) = memory::init_memory(memory_entries, phys_mem_offset);
+                
+                // Initialize kernel heap
+                kprintln!("[INFO] Initializing kernel heap: {} MiB at {:#x}", 
+                         memory::HEAP_SIZE / (1024 * 1024), memory::HEAP_START);
+                match memory::init_heap(&mut mapper, &mut frame_allocator) {
+                    Ok(_) => {
+                        kprintln!("[OK] Kernel heap initialized with proper virtual memory mapping");
+                        let stats = memory::heap_stats();
+                        kprintln!("     Heap size: {} MiB, Start: {:#x}", stats.total_size / (1024 * 1024), memory::HEAP_START);
+                    },
+                    Err(e) => {
+                        kprintln!("ERROR: Failed to initialize heap: {:?}", e);
+                        halt_system();
+                    }
+                }
+                
+                // Initialize scheduler
+                scheduler::init_scheduler(1); // Single CPU for now
+                kprintln!("[OK] Scheduler initialized");
+                
             } else {
                 kprintln!("ERROR: No HHDM response");
+                halt_system();
             }
+        } else {
+            kprintln!("ERROR: No memory map response");
+            halt_system();
         }
+        
+        // Initialize syscalls
+        api::syscall_entry::init_syscalls();
+        kprintln!("[OK] Syscall interface initialized");
         
         // Enable interrupts after everything is set up
         x86_64::instructions::interrupts::enable();

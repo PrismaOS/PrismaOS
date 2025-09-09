@@ -1,6 +1,23 @@
 #![no_std]
+#![no_main]
 
 extern crate alloc;
+
+use linked_list_allocator::LockedHeap;
+
+#[global_allocator]
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
+
+/// Initialize the heap allocator
+/// This should be called by the kernel or runtime before using the compositor
+pub unsafe fn init_heap(heap_start: usize, heap_size: usize) {
+    ALLOCATOR.lock().init(heap_start as *mut u8, heap_size);
+}
 
 use alloc::{collections::BTreeMap, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};

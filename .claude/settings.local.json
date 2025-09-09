@@ -8,7 +8,11 @@
       "Bash(cargo build:*)",
       "Read(//c/Users/redst/OneDrive/Documents/GitHub/**)",
       "Bash(git checkout:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(timeout 60 cargo check --quiet)",
+      "Bash(timeout 30 cargo check --quiet)",
+      "Bash(timeout 20 cargo check)",
+      "Bash(timeout 30 cargo build --quiet)"
     ],
     "deny": [],
     "ask": []

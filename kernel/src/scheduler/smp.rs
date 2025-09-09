@@ -70,12 +70,13 @@ pub fn send_ipi_broadcast_others(vector: u8) {
 
 /// CPU-local data structure
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct CpuLocalData {
     pub cpu_id: usize,
     pub kernel_stack: u64,
     pub user_stack: u64,
-    pub current_process: Option<crate::scheduler::ProcessId>,
-    pub idle_task: Option<crate::scheduler::ProcessId>,
+    pub current_process: Option<u64>, // Store ProcessId as u64 for Copy compatibility
+    pub idle_task: Option<u64>,       // Store ProcessId as u64 for Copy compatibility
     pub scheduler_ticks: u64,
     pub interrupt_count: u64,
 }

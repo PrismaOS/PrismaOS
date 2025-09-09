@@ -119,6 +119,8 @@ pub struct ScancodeStream {
 
 impl ScancodeStream {
     pub fn new() -> Self {
+        SCANCODE_QUEUE.try_init_once(|| ArrayQueue::new(100))
+            .expect("ScancodeStream::new should only be called once");
         ScancodeStream { _private: () }
     }
 }
@@ -127,61 +129,41 @@ impl Stream for ScancodeStream {
     type Item = u8;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<u8>> {
-        use x86_64::instructions::port::Port;
+        let queue = SCANCODE_QUEUE.try_get().expect("scancode queue not initialized");
 
-        let mut port = Port::new(0x60);
-        let scancode: u8 = unsafe { port.read() };
-        if scancode != 0 {
-            Poll::Ready(Some(scancode))
-        } else {
-            SCANCODE_QUEUE.register_waker(cx.waker());
-            Poll::Pending
+        if let Some(scancode) = queue.pop() {
+            return Poll::Ready(Some(scancode));
+        }
+
+        SCANCODE_WAKER.register(cx.waker());
+        match queue.pop() {
+            Some(scancode) => {
+                SCANCODE_WAKER.take();
+                Poll::Ready(Some(scancode))
+            }
+            None => Poll::Pending,
         }
     }
 }
 
-static SCANCODE_QUEUE: ScancodeQueue = ScancodeQueue::new();
+static SCANCODE_QUEUE: conquer_once::spin::OnceCell<ArrayQueue<u8>> = conquer_once::spin::OnceCell::uninit();
+static SCANCODE_WAKER: AtomicWaker = AtomicWaker::new();
 
 pub(crate) fn add_scancode(scancode: u8) {
-    if let Some(mut queue) = SCANCODE_QUEUE.queue.lock() {
+    if let Ok(queue) = SCANCODE_QUEUE.try_get() {
         if queue.push(scancode).is_err() {
-            println!("WARNING: scancode queue full; dropping keyboard input");
+            crate::kprintln!("WARNING: scancode queue full; dropping keyboard input");
         } else {
-            SCANCODE_QUEUE.waker.wake();
+            SCANCODE_WAKER.wake();
         }
     } else {
-        println!("WARNING: scancode queue locked; dropping keyboard input");
+        crate::kprintln!("WARNING: scancode queue not initialized");
     }
 }
 
-struct ScancodeQueue {
-    queue: spin::Mutex<ArrayQueue<u8>>,
-    waker: AtomicWaker,
-}
+// ScancodeQueue struct removed - using OnceCell directly
 
-impl ScancodeQueue {
-    const fn new() -> Self {
-        ScancodeQueue {
-            queue: spin::Mutex::new(ArrayQueue::new_const()),
-            waker: AtomicWaker::new(),
-        }
-    }
-
-    fn register_waker(&self, waker: &Waker) {
-        self.waker.register(waker);
-    }
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => ($crate::executor::_print(format_args!($($arg)*)));
-}
-
-#[macro_export]
-macro_rules! println {
-    () => ($crate::print!("\n"));
-    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
-}
+// Use the print macros from main module instead of redefining
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
@@ -248,7 +230,7 @@ struct ScreenChar {
 
 #[repr(transparent)]
 struct Buffer {
-    chars: [[Volatile<ScreenChar>; BUFFER_WIDTH]; BUFFER_HEIGHT],
+    chars: [[ScreenChar; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
 pub struct Writer {
@@ -270,10 +252,10 @@ impl Writer {
                 let col = self.column_position;
 
                 let color_code = self.color_code;
-                self.buffer.chars[row][col].write(ScreenChar {
+                self.buffer.chars[row][col] = ScreenChar {
                     ascii_character: byte,
                     color_code,
-                });
+                };
                 self.column_position += 1;
             }
         }
@@ -291,8 +273,8 @@ impl Writer {
     fn new_line(&mut self) {
         for row in 1..BUFFER_HEIGHT {
             for col in 0..BUFFER_WIDTH {
-                let character = self.buffer.chars[row][col].read();
-                self.buffer.chars[row - 1][col].write(character);
+                let character = self.buffer.chars[row][col];
+                self.buffer.chars[row - 1][col] = character;
             }
         }
         self.clear_row(BUFFER_HEIGHT - 1);
@@ -305,7 +287,7 @@ impl Writer {
             color_code: self.color_code,
         };
         for col in 0..BUFFER_WIDTH {
-            self.buffer.chars[row][col].write(blank);
+            self.buffer.chars[row][col] = blank;
         }
     }
 }
