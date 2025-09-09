@@ -5,7 +5,10 @@
       "Bash(cat:*)",
       "Bash(cargo check:*)",
       "Bash(make:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/**)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []

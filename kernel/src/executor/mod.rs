@@ -1,3 +1,4 @@
+extern crate alloc;
 use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use core::{
     future::Future,
@@ -142,7 +143,7 @@ impl Stream for ScancodeStream {
 static SCANCODE_QUEUE: ScancodeQueue = ScancodeQueue::new();
 
 pub(crate) fn add_scancode(scancode: u8) {
-    if let Ok(mut queue) = SCANCODE_QUEUE.queue.try_lock() {
+    if let Some(mut queue) = SCANCODE_QUEUE.queue.lock() {
         if queue.push(scancode).is_err() {
             println!("WARNING: scancode queue full; dropping keyboard input");
         } else {
