@@ -244,15 +244,12 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(test)]
     test_main();
 
-    // Safe idle loop
-    loop {
-        kprintln!("System idle. Halting CPU...");
-        // Sleep a bit
-        for _ in 0..500_000_000 {
-            core::arch::asm!("nop");
-        }
-        core::arch::asm!("hlt");
+    kprintln!("System idle. Halting CPU...");
+    // Sleep a bit
+    for _ in 0..500_000_000 {
+        core::arch::asm!("nop");
     }
+    core::arch::asm!("hlt");
 }
 
 /// Production-ready panic handler with BSOD
