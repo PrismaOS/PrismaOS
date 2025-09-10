@@ -8,17 +8,16 @@
 
 extern crate alloc;
 
-use limine::BaseRevision;
-use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker, HhdmRequest, MemoryMapRequest};
-use core::panic::PanicInfo;
-use pic8259::ChainedPics;
-use spin::Mutex;
-
 mod font;
-use font::{PsfFont, draw_string, FONT_PSF};
+use core::panic::PanicInfo;
+
+use font::{PsfFont, FONT_PSF};
 
 mod scrolling_text;
 use scrolling_text::{ScrollingTextRenderer, init_global_renderer};
+
+mod consts;
+pub use consts::*;
 
 mod memory;
 mod gdt;
@@ -36,87 +35,6 @@ mod elf;
 mod boot_userspace;
 mod utils;
 mod userspace_isolation;
-
-// Re-export our kernel printing macros as standard names for module compatibility
-#[macro_export]
-macro_rules! println {
-    () => {
-        $crate::kprintln!()
-    };
-    ($($arg:tt)*) => {
-        $crate::kprintln!($($arg)*)
-    };
-}
-
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => {
-        $crate::kprint!($($arg)*)
-    };
-}
-
-// PIC configuration
-pub const PIC_1_OFFSET: u8 = 32;
-pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-
-pub static PICS: Mutex<ChainedPics> = Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
-
-#[used]
-#[unsafe(link_section = ".requests")]
-static BASE_REVISION: BaseRevision = BaseRevision::new();
-
-#[used]
-#[unsafe(link_section = ".requests")]
-static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
-
-#[used]
-#[unsafe(link_section = ".requests")]
-static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
-
-#[used]
-#[unsafe(link_section = ".requests")]
-static MEMORY_MAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
-
-#[used]
-#[unsafe(link_section = ".requests_start_marker")]
-static _START_MARKER: RequestsStartMarker = RequestsStartMarker::new();
-
-#[used]
-#[unsafe(link_section = ".requests_end_marker")]
-static _END_MARKER: RequestsEndMarker = RequestsEndMarker::new();
-
-/// Display a message in the framebuffer using the PSF font
-unsafe fn display_fb_message(
-    addr: *mut u8,
-    pitch: usize,
-    width: usize,
-    height: usize,
-    font: &PsfFont,
-    message: &[u8],
-    y: usize,
-    color: u32,
-) {
-    draw_string(
-        addr,
-        pitch,
-        0,
-        y,
-        color,
-        font,
-        message,
-        width,
-        height,
-    );
-}
-
-/// Safe system halt
-fn halt_system() -> ! {
-    loop {
-        unsafe {
-            core::arch::asm!("hlt");
-        }
-    }
-}
 
 /// Production-ready kernel main function using WORKING memory access pattern
 #[unsafe(no_mangle)]
@@ -195,7 +113,7 @@ unsafe extern "C" fn kmain() -> ! {
                             }
                         }
                     }
-                    halt_system();
+                    utils::system::halt_system();
                 }
             }
         }
@@ -235,7 +153,7 @@ unsafe extern "C" fn kmain() -> ! {
             let entry_count = memory_entries.len();
             if entry_count == 0 {
                 kprintln!("ERROR: No memory map");
-                halt_system();
+                utils::system::halt_system();
             }
             kprintln!("[OK] Memory map validated ({} entries)", entry_count);
             
@@ -257,7 +175,7 @@ unsafe extern "C" fn kmain() -> ! {
                     },
                     Err(e) => {
                         kprintln!("ERROR: Failed to initialize heap: {:?}", e);
-                        halt_system();
+                        utils::system::halt_system();
                     }
                 }
                 
@@ -280,11 +198,11 @@ unsafe extern "C" fn kmain() -> ! {
                 
             } else {
                 kprintln!("ERROR: No HHDM response");
-                halt_system();
+                utils::system::halt_system();
             }
         } else {
             kprintln!("ERROR: No memory map response");
-            halt_system();
+            utils::system::halt_system();
         }
         
         // Initialize syscalls
@@ -353,7 +271,7 @@ fn panic_handler(info: &PanicInfo) -> ! {
         }
     }
     
-    halt_system();
+    utils::system::halt_system();
 }
 
 /// Test runner
@@ -361,10 +279,4 @@ pub fn test_runner(tests: &[&dyn Fn()]) {
     for test in tests {
         test();
     }
-}
-
-/// Basic test
-#[test_case]
-fn basic_test() {
-    assert_eq!(1 + 1, 2);
 }

@@ -502,3 +502,45 @@ macro_rules! kprint {
         }
     };
 }
+
+// Re-export our kernel printing macros as standard names for module compatibility
+#[macro_export]
+macro_rules! println {
+    () => {
+        $crate::kprintln!()
+    };
+    ($($arg:tt)*) => {
+        $crate::kprintln!($($arg)*)
+    };
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => {
+        $crate::kprint!($($arg)*)
+    };
+}
+
+/// Display a message in the framebuffer using the PSF font
+unsafe fn display_fb_message(
+    addr: *mut u8,
+    pitch: usize,
+    width: usize,
+    height: usize,
+    font: &PsfFont,
+    message: &[u8],
+    y: usize,
+    color: u32,
+) {
+    draw_string(
+        addr,
+        pitch,
+        0,
+        y,
+        color,
+        font,
+        message,
+        width,
+        height,
+    );
+}
