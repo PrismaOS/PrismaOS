@@ -1,16 +1,15 @@
 #![no_std]
 #![no_main]
-#![feature(alloc_error_handler)]
-#![feature(custom_test_frameworks)]
 #![feature(abi_x86_interrupt)]
+#![feature(alloc_error_handler)]
 #![test_runner(crate::test_runner)]
+#![feature(custom_test_frameworks)]
 #![reexport_test_harness_main = "test_main"]
 
+use core::panic::PanicInfo;
 extern crate alloc;
 
 mod font;
-use core::panic::PanicInfo;
-
 use font::{PsfFont, FONT_PSF};
 
 mod scrolling_text;
@@ -19,22 +18,22 @@ use scrolling_text::{ScrollingTextRenderer, init_global_renderer};
 mod consts;
 pub use consts::*;
 
-mod memory;
-mod gdt;
-mod interrupts;
-mod drivers;
-mod scheduler;
-mod api;
-mod executor;
-mod time;
-mod syscall;
-mod process;
-mod userspace_test;
-mod events;
-mod elf;
-mod boot_userspace;
-mod utils;
 mod userspace_isolation;
+mod boot_userspace;
+mod userspace_test;
+mod interrupts;
+mod scheduler;
+mod executor;
+mod process;
+mod drivers;
+mod syscall;
+mod events;
+mod memory;
+mod utils;
+mod time;
+mod elf;
+mod gdt;
+mod api;
 
 /// Production-ready kernel main function using WORKING memory access pattern
 #[unsafe(no_mangle)]
