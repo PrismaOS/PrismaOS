@@ -1,5 +1,4 @@
 #![no_std]
-#![no_main]
 
 extern crate alloc;
 
@@ -183,6 +182,10 @@ impl Surface {
 
     pub fn commit(&self) -> bool {
         syscall_call_object(self.handle, 1, 0, 0) == 0
+    }
+    
+    pub fn handle(&self) -> u64 {
+        self.handle
     }
 }
 

@@ -37,7 +37,7 @@ fn hello_prisma_main() -> i32 {
     
     // Test 2: Create a graphics surface (400x300 RGBA)
     let surface = Surface::new(400, 300, 0);
-    let surface_handle = match surface {
+    let _surface_handle = match &surface {
         Some(surf) => surf.handle(),
         None => return 2, // Surface creation failed
     };
@@ -50,7 +50,7 @@ fn hello_prisma_main() -> i32 {
     };
     
     // Test 4: Attach buffer to surface
-    if let Some(surface) = surface {
+    if let Some(ref surface) = surface {
         if !surface.attach_buffer(buffer_handle) {
             return 4; // Buffer attachment failed
         }

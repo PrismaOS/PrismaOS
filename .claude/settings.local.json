@@ -23,7 +23,11 @@
       "Bash(rustc:*)",
       "Bash(chmod:*)",
       "Bash(./build_userspace.sh:*)",
-      "Bash(timeout 30 cargo build --release --quiet)"
+      "Bash(timeout 30 cargo build --release --quiet)",
+      "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo build --target=\"x86_64-prismaos\" --release)",
+      "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo build --target=\"x86_64-prismaos\" --release -Z build-std=core,alloc -Z build-std-features=panic_immediate_abort)",
+      "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo +nightly build --target=\"x86_64-prismaos\" --release -Z build-std=core,alloc -Z build-std-features=panic_immediate_abort)",
+      "Bash(cargo:*)"
     ],
     "deny": [],
     "ask": []

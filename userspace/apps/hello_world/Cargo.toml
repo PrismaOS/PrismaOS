@@ -8,7 +8,7 @@ name = "hello_world"
 path = "src/main.rs"
 
 [dependencies]
-userspace-runtime = { path = "../../runtime" }
+prisma-userspace = { path = "../../runtime" }
 
 [profile.dev]
 panic = "abort"

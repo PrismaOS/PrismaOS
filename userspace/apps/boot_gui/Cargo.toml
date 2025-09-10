@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-userspace-runtime = { path = "../../runtime" }
+prisma-userspace = { path = "../../runtime" }
 
 [profile.dev]
 panic = "abort"
