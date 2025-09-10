@@ -18,3 +18,8 @@ pub fn ticks_to_ms(ticks: u64) -> u64 {
 pub fn ms_to_ticks(ms: u64) -> u64 {
     ms
 }
+
+/// Get current timestamp in milliseconds since boot
+pub fn get_timestamp() -> u64 {
+    ticks_to_ms(current_tick())
+}

@@ -3,6 +3,7 @@ use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use spin::Mutex;
 
 use super::{process::*, SchedulingPolicy, ProcessState};
+use crate::api::ProcessId;
 
 pub struct CpuRunQueue {
     cpu_id: usize,

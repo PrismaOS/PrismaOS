@@ -1,10 +1,12 @@
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
 use core::arch::asm;
 
 use super::{
     objects::*, get_registry, IpcMessage, IpcResponse, ObjectHandle, 
     ProcessId, Rights, PixelFormat
 };
+use crate::{elf::ElfLoader, executor::task::Task, memory::BootInfoFrameAllocator};
+use x86_64::VirtAddr;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -30,6 +32,9 @@ pub enum SyscallNumber {
     CallObject = 2,
     TransferCapability = 3,
     RevokeCapability = 4,
+    CreateProcess = 5,
+    LoadElf = 6,
+    StartProcess = 7,
     Exit = 99,
 }
 
@@ -43,6 +48,9 @@ impl TryFrom<u64> for SyscallNumber {
             2 => Ok(SyscallNumber::CallObject),
             3 => Ok(SyscallNumber::TransferCapability),
             4 => Ok(SyscallNumber::RevokeCapability),
+            5 => Ok(SyscallNumber::CreateProcess),
+            6 => Ok(SyscallNumber::LoadElf),
+            7 => Ok(SyscallNumber::StartProcess),
             99 => Ok(SyscallNumber::Exit),
             _ => Err(()),
         }
@@ -64,6 +72,9 @@ pub fn handle_syscall(frame: &mut SyscallFrame) {
         SyscallNumber::CallObject => sys_call_object(frame),
         SyscallNumber::TransferCapability => sys_transfer_capability(frame),
         SyscallNumber::RevokeCapability => sys_revoke_capability(frame),
+        SyscallNumber::CreateProcess => sys_create_process(frame),
+        SyscallNumber::LoadElf => sys_load_elf(frame),
+        SyscallNumber::StartProcess => sys_start_process(frame),
         SyscallNumber::Exit => sys_exit(frame),
     };
 
@@ -251,10 +262,69 @@ pub unsafe fn enable_syscalls() {
     Efer::write(efer);
 }
 
-use x86_64::VirtAddr;
-
 // Syscall entry point disabled for now due to naked_asm! requirement
 // TODO: Re-enable once naked_asm! is available or use alternative approach
+
+fn sys_create_process(_frame: &SyscallFrame) -> u64 {
+    // Create a new process with empty memory space
+    let process_id = ProcessId::new();
+    
+    // TODO: Create task and store in scheduler
+    // let task = Task::new(VirtAddr::new(0));
+    // Store task in scheduler (placeholder - would need proper process management)
+    
+    process_id.as_u64()
+}
+
+fn sys_load_elf(frame: &SyscallFrame) -> u64 {
+    let _process_id = ProcessId(frame.rbx);
+    let elf_data_ptr = frame.rcx as *const u8;
+    let elf_data_len = frame.rdx as usize;
+    
+    if elf_data_ptr.is_null() || elf_data_len == 0 {
+        return u64::MAX;
+    }
+    
+    // Copy ELF data from userspace (unsafe but necessary)
+    let elf_data = unsafe {
+        let slice = core::slice::from_raw_parts(elf_data_ptr, elf_data_len);
+        Vec::from(slice)
+    };
+    
+    // Parse and load ELF
+    let elf_loader = match ElfLoader::new(elf_data) {
+        Ok(loader) => loader,
+        Err(_) => return u64::MAX,
+    };
+    
+    // TODO: Get proper mapper and frame allocator for the process
+    // For now this is a placeholder that would need proper process memory management
+    // let mut mapper = get_process_mapper(process_id);
+    // let mut frame_allocator = get_frame_allocator();
+    // 
+    // match elf_loader.load_segments(&mut mapper, &mut frame_allocator) {
+    //     Ok(_) => elf_loader.entry_point().as_u64(),
+    //     Err(_) => u64::MAX,
+    // }
+    
+    // Return entry point for now
+    elf_loader.entry_point().as_u64()
+}
+
+fn sys_start_process(frame: &SyscallFrame) -> u64 {
+    let _process_id = ProcessId(frame.rbx);
+    let _entry_point = VirtAddr::new(frame.rcx);
+    
+    // TODO: Switch to the process and start execution
+    // This would involve:
+    // 1. Setting up process memory space
+    // 2. Creating initial stack
+    // 3. Setting up registers for userspace execution
+    // 4. Switching to the process via scheduler
+    
+    // For now, just return success
+    0
+}
 
 #[no_mangle]
 unsafe extern "C" fn handle_syscall_wrapper(frame: *mut SyscallFrame) {

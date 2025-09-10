@@ -1,0 +1,28 @@
+[package]
+name = "hello_prisma"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hello_prisma"
+path = "src/main.rs"
+
+[dependencies]
+prisma-userspace = { path = "../../runtime" }
+
+[profile.dev]
+panic = "abort"
+opt-level = 1
+
+[profile.release] 
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+# Force static linking
+[profile.dev.package."*"]
+opt-level = "s"
+
+[profile.release.package."*"] 
+opt-level = "s"

@@ -28,7 +28,13 @@ mod scheduler;
 mod api;
 mod executor;
 mod time;
+mod syscall;
+mod process;
+mod userspace_test;
 mod events;
+mod elf;
+mod boot_userspace;
+mod userspace_isolation;
 
 // Re-export our kernel printing macros as standard names for module compatibility
 #[macro_export]
@@ -111,16 +117,18 @@ fn halt_system() -> ! {
     }
 }
 
+// Constants for rainbow test canvas
+const RAINBOW_W: usize = 160;
+const RAINBOW_H: usize = 48;
+
 /// Display rainbow test canvas using global renderer
 fn show_rainbow_test() {
     kprintln!("[OK] Graphics test: Rendering rainbow canvas...");
     
     // Build a small rainbow test canvas and draw it using the renderer.
     // Canvas size is chosen modestly to avoid large stack usage.
-    const SRC_W: usize = 160;
-    const SRC_H: usize = 48;
-    // Safe fixed-size stack buffer
-    let mut pixels: [u32; SRC_W * SRC_H] = [0; SRC_W * SRC_H];
+    // Use heap allocation instead of stack to avoid stack overflow
+    let mut pixels = alloc::vec![0u32; RAINBOW_W * RAINBOW_H];
 
     // Define rainbow color stops (ARGB)
     const STOPS: [u32; 8] = [
@@ -136,10 +144,10 @@ fn show_rainbow_test() {
     let segments = STOPS.len() - 1;
 
     // Fill pixels with horizontally interpolated rainbow, slightly darken by row for vertical variation.
-    for y in 0..SRC_H {
-        for x in 0..SRC_W {
+    for y in 0..RAINBOW_H {
+        for x in 0..RAINBOW_W {
             // position along width in [0, segments)
-            let pos = (x * segments) as usize * 256 / (SRC_W.max(1));
+            let pos = (x * segments) as usize * 256 / (RAINBOW_W.max(1));
             let seg = (pos / 256).min(segments - 1);
             let t = (pos % 256) as u32; // 0..255
 
@@ -163,17 +171,17 @@ fn show_rainbow_test() {
             let bb = ((b0 * (256 - t) + b1 * t) >> 8) as u32;
 
             // slight vertical darkening to give a banded look
-            let dark = 220u32.saturating_sub(y as u32 * 120 / SRC_H as u32);
+            let dark = 220u32.saturating_sub(y as u32 * 120 / RAINBOW_H as u32);
             let rr = (rr * dark) / 255;
             let gg = (gg * dark) / 255;
             let bb = (bb * dark) / 255;
 
-            pixels[y * SRC_W + x] = (a << 24) | (rr << 16) | (gg << 8) | bb;
+            pixels[y * RAINBOW_W + x] = (a << 24) | (rr << 16) | (gg << 8) | bb;
         }
     }
 
     // Draw the generated rainbow canvas using global renderer
-    scrolling_text::kdraw_canvas(&pixels, SRC_W, SRC_H);
+    scrolling_text::kdraw_canvas(&pixels, RAINBOW_W, RAINBOW_H);
 }
 
 /// Production-ready kernel main function using WORKING memory access pattern
@@ -198,8 +206,12 @@ unsafe extern "C" fn kmain() -> ! {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
             let addr = framebuffer.addr();
             let pitch = framebuffer.pitch() as usize;
-            let width = framebuffer.width().min(800) as usize;
-            let height = framebuffer.height().min(600) as usize;
+
+            let initial_width = framebuffer.width() as usize;
+            let initial_height = framebuffer.height() as usize;
+
+            let width = initial_width.min(800); // cap at 800x600 for safety
+            let height = initial_height.min(600);
             if addr.is_null() || pitch == 0 || width == 0 || height == 0 {
                 // Fallback to VGA if framebuffer is invalid
             } else {
@@ -319,6 +331,19 @@ unsafe extern "C" fn kmain() -> ! {
                 scheduler::init_scheduler(1); // Single CPU for now
                 kprintln!("[OK] Scheduler initialized");
                 
+                // Launch the boot GUI!
+                kprintln!("");
+                kprintln!("=== Launching PrismaOS Desktop Environment ===");
+                match boot_userspace::launch_boot_gui(&mut mapper, &mut frame_allocator) {
+                    Ok(_) => {
+                        kprintln!("[OK] Boot GUI launched successfully");
+                    }
+                    Err(e) => {
+                        kprintln!("ERROR: Failed to launch boot GUI: {}", e);
+                        kprintln!("Continuing without GUI...");
+                    }
+                }
+                
             } else {
                 kprintln!("ERROR: No HHDM response");
                 halt_system();
@@ -329,8 +354,13 @@ unsafe extern "C" fn kmain() -> ! {
         }
         
         // Initialize syscalls
-        api::syscall_entry::init_syscalls();
+        syscall::init_syscalls();
         kprintln!("[OK] Syscall interface initialized");
+        
+        // Set up userspace protection before enabling interrupts
+        unsafe {
+            userspace_isolation::setup_userspace_protection();
+        }
         
         // Enable interrupts after everything is set up
         x86_64::instructions::interrupts::enable();
@@ -348,7 +378,13 @@ unsafe extern "C" fn kmain() -> ! {
 
         kprintln!("");
         kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
-        kprintln!("All systems operational - entering idle state");
+        kprintln!("All systems operational");
+        
+        // Test userspace execution
+        userspace_test::test_userspace_execution();
+        
+        kprintln!("");
+        kprintln!("=== Entering idle state ===");
         
         // Uncomment the line below to test BSOD panic handler
         // panic!("Test panic for BSOD demonstration");
@@ -364,7 +400,7 @@ unsafe extern "C" fn kmain() -> ! {
         for _ in 0..500_000_000 {
             core::arch::asm!("nop");
         }
-        //core::arch::asm!("hlt");
+        core::arch::asm!("hlt");
     }
 }
 

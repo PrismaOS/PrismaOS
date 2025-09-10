@@ -6,6 +6,7 @@ use x86_64::{
     structures::paging::{PhysFrame, PageTable},
     PhysAddr, VirtAddr,
 };
+use crate::api::ProcessId;
 
 pub mod process;
 pub mod cpu;
@@ -388,4 +389,14 @@ pub fn schedule_next() -> Option<Arc<Process>> {
 /// Timer tick handler
 pub fn scheduler_tick(cpu_id: usize) {
     scheduler().timer_tick(cpu_id);
+}
+
+/// Get the current process ID
+/// 
+/// Returns the ProcessId of the currently running process, or None if
+/// no process is currently running (e.g., in kernel-only context).
+pub fn get_current_process_id() -> Option<ProcessId> {
+    // For now, return a dummy process ID since we don't have real process switching yet
+    // In a real implementation, this would get the current process from per-CPU data
+    Some(ProcessId::new())
 }

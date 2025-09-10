@@ -9,6 +9,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "boot-gui"
+version = "0.1.0"
+dependencies = [
+ "userspace-runtime",
+]
+
+[[package]]
 name = "cobs"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -35,6 +42,7 @@ dependencies = [
  "linked_list_allocator",
  "postcard",
  "serde",
+ "userspace-runtime",
 ]
 
 [[package]]
@@ -48,6 +56,13 @@ name = "embedded-io"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
+name = "hello_world"
+version = "0.1.0"
+dependencies = [
+ "userspace-runtime",
+]
 
 [[package]]
 name = "linked_list_allocator"
@@ -178,3 +193,10 @@ name = "unicode-ident"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
+
+[[package]]
+name = "userspace-runtime"
+version = "0.1.0"
+dependencies = [
+ "linked_list_allocator",
+]

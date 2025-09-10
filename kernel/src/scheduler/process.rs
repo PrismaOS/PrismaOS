@@ -7,20 +7,7 @@ use x86_64::{
 };
 
 use super::{ProcessState, BlockReason};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ProcessId(u64);
-
-impl ProcessId {
-    pub fn new() -> Self {
-        static NEXT_PID: AtomicU64 = AtomicU64::new(1);
-        ProcessId(NEXT_PID.fetch_add(1, Ordering::Relaxed))
-    }
-
-    pub fn as_u64(self) -> u64 {
-        self.0
-    }
-}
+use crate::api::ProcessId;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

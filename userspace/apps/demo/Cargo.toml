@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 compositor = { path = "../../compositor" }
+userspace-runtime = { path = "../../runtime" }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 postcard = { version = "1.0", default-features = false, features = ["alloc"] }
 linked_list_allocator = "0.10"

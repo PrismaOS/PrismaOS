@@ -12,7 +12,18 @@
       "Bash(timeout 60 cargo check --quiet)",
       "Bash(timeout 30 cargo check --quiet)",
       "Bash(timeout 20 cargo check)",
-      "Bash(timeout 30 cargo build --quiet)"
+      "Bash(timeout 30 cargo build --quiet)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo check --quiet)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release --quiet)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release --quiet -p boot-gui)",
+      "Bash(rustup target list:*)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release --target x86_64-unknown-linux-gnu -p boot-gui)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release -p boot-gui)",
+      "Bash(timeout 60 cargo build --release --quiet)",
+      "Bash(rustc:*)",
+      "Bash(chmod:*)",
+      "Bash(./build_userspace.sh:*)",
+      "Bash(timeout 30 cargo build --release --quiet)"
     ],
     "deny": [],
     "ask": []

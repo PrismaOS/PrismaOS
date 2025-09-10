@@ -139,6 +139,7 @@ impl DmaRegistry {
         let mut buffers = self.buffers.write();
         
         // Find empty slot or expand registry
+        //TODO: optimize with a free list rather than scanning
         if let Some(index) = buffers.iter().position(|b| b.is_none()) {
             buffers[index] = Some(buffer);
         } else {
@@ -182,6 +183,7 @@ impl DmaRegistry {
         let mut total_memory = 0;
         let mut pinned_buffers = 0;
 
+        // TODO: optimize by maintaining counts during register/unregister
         for buffer_slot in buffers.iter() {
             if let Some(buffer) = buffer_slot {
                 total_buffers += 1;

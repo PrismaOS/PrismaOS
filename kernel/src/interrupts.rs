@@ -1,4 +1,5 @@
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode};
+use x86_64::registers::control::Cr2;
 use lazy_static::lazy_static;
 use crate::gdt;
 use crate::println;
@@ -7,6 +8,8 @@ lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        idt.page_fault.set_handler_fn(page_fault_handler);
+        idt.general_protection_fault.set_handler_fn(general_protection_fault_handler);
         unsafe {
             idt.double_fault.set_handler_fn(double_fault_handler)
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
@@ -48,9 +51,27 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
 
 extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
-    _error_code: u64,
+    error_code: u64,
 ) -> ! {
-    panic!("EXCEPTION: DOUBLE FAULT\n{:#?}", stack_frame);
+    // Check if this came from userspace
+    let cs = stack_frame.code_segment;
+    let is_user_mode = (cs.0 & 3) == 3; // Ring 3
+    
+    if is_user_mode {
+        println!("🚨 USERSPACE DOUBLE FAULT - Process will be terminated");
+        println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
+        println!("   Error: {:#x}", error_code);
+        println!("   → Kernel remains stable");
+        
+        // In a real implementation: terminate process and continue
+        // For now, we'll still halt but with better messaging
+        println!("   → Halting system (would normally just kill process)");
+    } else {
+        println!("💥 KERNEL DOUBLE FAULT - Critical system error");
+    }
+    
+    panic!("DOUBLE FAULT\nRIP: {:#x}\nError: {:#x}", 
+           stack_frame.instruction_pointer.as_u64(), error_code);
 }
 
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
@@ -115,4 +136,55 @@ extern "x86-interrupt" fn mouse_interrupt_handler(_stack_frame: InterruptStackFr
         
         crate::PICS.lock().notify_end_of_interrupt(InterruptIndex::Mouse.as_u8());
     }
+}
+
+extern "x86-interrupt" fn page_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: PageFaultErrorCode,
+) {
+    let fault_address = Cr2::read().unwrap_or(x86_64::VirtAddr::new(0));
+    
+    // Check if this came from userspace
+    let cs = stack_frame.code_segment;
+    let is_user_mode = (cs.0 & 3) == 3; // Ring 3
+    
+    println!("🚨 PAGE FAULT:");
+    println!("   Address: {:#x}", fault_address.as_u64());
+    println!("   User Mode: {}", is_user_mode);
+    println!("   Caused by Write: {}", error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE));
+    println!("   Page Present: {}", error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION));
+    
+    if is_user_mode {
+        println!("   → Userspace page fault - would terminate process");
+        println!("   → Kernel memory remains protected");
+        // In a real implementation: terminate process, don't panic kernel
+    } else {
+        println!("   → Kernel page fault - this is a kernel bug!");
+    }
+    
+    panic!("Page fault at {:#x}", fault_address.as_u64());
+}
+
+extern "x86-interrupt" fn general_protection_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    // Check if this came from userspace
+    let cs = stack_frame.code_segment;
+    let is_user_mode = (cs.0 & 3) == 3; // Ring 3
+    
+    println!("🚨 GENERAL PROTECTION FAULT:");
+    println!("   Error Code: {:#x}", error_code);
+    println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
+    println!("   User Mode: {}", is_user_mode);
+    
+    if is_user_mode {
+        println!("   → Userspace privilege violation - would terminate process");
+        println!("   → Kernel remains protected");
+        // In a real implementation: terminate process, don't panic kernel
+    } else {
+        println!("   → Kernel privilege violation - kernel bug!");
+    }
+    
+    panic!("General protection fault with error code {:#x}", error_code);
 }
