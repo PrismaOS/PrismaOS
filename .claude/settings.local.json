@@ -27,7 +27,10 @@
       "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo build --target=\"x86_64-prismaos\" --release)",
       "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo build --target=\"x86_64-prismaos\" --release -Z build-std=core,alloc -Z build-std-features=panic_immediate_abort)",
       "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo +nightly build --target=\"x86_64-prismaos\" --release -Z build-std=core,alloc -Z build-std-features=panic_immediate_abort)",
-      "Bash(cargo:*)"
+      "Bash(cargo:*)",
+      "Bash(timeout 10 cargo build --release)",
+      "Bash(timeout 180 cargo build --release)",
+      "Bash(timeout 60 cargo build --release)"
     ],
     "deny": [],
     "ask": []

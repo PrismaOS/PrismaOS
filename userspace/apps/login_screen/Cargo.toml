@@ -1,0 +1,21 @@
+[package]
+name = "login_screen"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "login_screen"
+path = "src/main.rs"
+
+[dependencies]
+prisma-userspace = { path = "../../runtime" }
+
+[profile.dev]
+panic = "abort"
+opt-level = 1
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+codegen-units = 1

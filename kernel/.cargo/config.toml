@@ -1,0 +1,11 @@
+[build]
+target = "x86_64-unknown-none"
+
+[target.x86_64-unknown-none]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=-T", 
+    "-C", "link-arg=linker-x86_64.ld",
+    "-C", "code-model=kernel",
+    "-C", "relocation-model=static"
+]
