@@ -250,6 +250,9 @@ unsafe extern "C" fn kmain() -> ! {
         core::arch::asm!("nop");
     }
     core::arch::asm!("hlt");
+    loop {
+        core::arch::asm!("hlt");
+    }
 }
 
 /// Production-ready panic handler with BSOD
