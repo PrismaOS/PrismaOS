@@ -1,7 +1,8 @@
-// filepath: c:\Users\redst\OneDrive\Documents\GitHub\PrismaOS\kernel\src\scrolling_text.rs
 use core::ptr;
 use core::cmp;
 use core::fmt::Write;
+use alloc::string::{String, ToString};
+use alloc::format;
 
 use crate::font::{draw_string, PsfFont};
 
@@ -543,4 +544,464 @@ unsafe fn display_fb_message(
         width,
         height,
     );
+}
+
+/// Blocking interactive user prompt using keyboard driver and text rendering
+/// Returns the user's input as a String when they press Enter
+/// This version polls the keyboard directly without async/await
+pub fn interactive_prompt_blocking(prompt_text: &str, max_length: usize) -> String {
+    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+    use crate::api::commands::inb;
+    
+    // Display the prompt
+    kprint!("{}", prompt_text);
+    
+    // Set up keyboard processing
+    let mut keyboard = Keyboard::new(
+        ScancodeSet1::new(), 
+        layouts::Us104Key, 
+        HandleControl::Ignore
+    );
+    
+    // Use a fixed-size buffer to avoid heap allocation
+    let mut input_buffer = [0u8; 256]; // Fixed buffer
+    let mut buffer_pos = 0;
+    let max_len = max_length.min(255); // Leave room for null terminator
+    
+    // Input loop - polls keyboard hardware directly
+    loop {
+        // Poll keyboard hardware directly
+        unsafe {
+            // Check if keyboard has data
+            if (inb(0x64) & 0x01) != 0 {
+                let scancode = inb(0x60);
+                
+                if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+                    if let Some(key) = keyboard.process_keyevent(key_event) {
+                        match key {
+                            DecodedKey::Unicode(character) => {
+                                match character {
+                                    '\n' | '\r' => {
+                                        // Enter pressed - finish input
+                                        kprintln!(); // Move to next line
+                                        // Convert buffer to String only at the end
+                                        let result_str = core::str::from_utf8(&input_buffer[..buffer_pos])
+                                            .unwrap_or("")
+                                            .to_string();
+                                        return result_str;
+                                    }
+                                    '\x08' => {
+                                        // Backspace
+                                        if buffer_pos > 0 {
+                                            buffer_pos -= 1;
+                                            // Clear and redraw line
+                                            kprint!("\r{}", prompt_text);
+                                            let current_str = core::str::from_utf8(&input_buffer[..buffer_pos])
+                                                .unwrap_or("");
+                                            kprint!("{} \r{}{}", current_str, prompt_text, current_str);
+                                        }
+                                    }
+                                    '\t' => {
+                                        // Tab - convert to spaces
+                                        if buffer_pos + 4 <= max_len {
+                                            for _ in 0..4 {
+                                                if buffer_pos < max_len {
+                                                    input_buffer[buffer_pos] = b' ';
+                                                    buffer_pos += 1;
+                                                }
+                                            }
+                                            kprint!("    ");
+                                        }
+                                    }
+                                    c if c.is_ascii() && !c.is_control() => {
+                                        // Regular character
+                                        if buffer_pos < max_len {
+                                            input_buffer[buffer_pos] = c as u8;
+                                            buffer_pos += 1;
+                                            kprint!("{}", c);
+                                        }
+                                    }
+                                    _ => {
+                                        // Ignore other characters
+                                    }
+                                }
+                            }
+                            DecodedKey::RawKey(_) => {
+                                // Ignore raw keys for now
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Small delay to avoid spinning too fast
+        for _ in 0..1000 {
+            core::hint::spin_loop();
+        }
+    }
+}
+
+
+/// Interactive user prompt using keyboard driver and text rendering
+/// Returns the user's input as a String when they press Enter
+pub async fn interactive_prompt(prompt_text: &str, max_length: usize) -> String {
+    use pc_keyboard::{layouts, DecodedKey, HandleControl, Keyboard, ScancodeSet1};
+    use futures_util::stream::StreamExt;
+    
+    // Display the prompt
+    kprint!("{}", prompt_text);
+    
+    // Set up keyboard processing
+    let mut scancodes = crate::executor::keyboard::ScancodeStream::new();
+    let mut keyboard = Keyboard::new(
+        ScancodeSet1::new(), 
+        layouts::Us104Key, 
+        HandleControl::Ignore
+    );
+    
+    let mut input_buffer = String::new();
+    
+    // Input loop
+    loop {
+        // Wait for keyboard input
+        if let Some(scancode) = scancodes.next().await {
+            if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+                if let Some(key) = keyboard.process_keyevent(key_event) {
+                    match key {
+                        DecodedKey::Unicode(character) => {
+                            match character {
+                                '\n' | '\r' => {
+                                    // Enter pressed - finish input
+                                    kprintln!(); // Move to next line
+                                    return input_buffer;
+                                }
+                                '\x08' => {
+                                    // Backspace
+                                    if !input_buffer.is_empty() {
+                                        input_buffer.pop();
+                                        // Clear and redraw line
+                                        kprint!("\r{}{}", prompt_text, input_buffer);
+                                        kprint!(" \r{}{}", prompt_text, input_buffer); // Clear extra char
+                                    }
+                                }
+                                '\t' => {
+                                    // Tab - convert to spaces
+                                    if input_buffer.len() + 4 <= max_length {
+                                        input_buffer.push_str("    ");
+                                        kprint!("    ");
+                                    }
+                                }
+                                c if c.is_ascii_graphic() || c == ' ' => {
+                                    // Printable character
+                                    if input_buffer.len() < max_length {
+                                        input_buffer.push(c);
+                                        kprint!("{}", c);
+                                    }
+                                }
+                                _ => {
+                                    // Ignore other characters
+                                }
+                            }
+                        }
+                        DecodedKey::RawKey(raw_key) => {
+                            // Handle special keys
+                            match raw_key {
+                                pc_keyboard::KeyCode::Escape => {
+                                    // ESC pressed - cancel input
+                                    kprintln!("\n[CANCELLED]");
+                                    return String::new();
+                                }
+                                pc_keyboard::KeyCode::F1 => {
+                                    // F1 - show help
+                                    show_prompt_help();
+                                    kprint!("{}{}", prompt_text, input_buffer); // Redraw prompt
+                                }
+                                _ => {
+                                    // Ignore other raw keys
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Show help for the interactive prompt
+fn show_prompt_help() {
+    kprintln!();
+    kprintln!("📋 Interactive Prompt Help:");
+    kprintln!("  • Type your input normally");
+    kprintln!("  • Press Enter to submit");
+    kprintln!("  • Press Backspace to delete");
+    kprintln!("  • Press Tab for 4 spaces");
+    kprintln!("  • Press ESC to cancel");
+    kprintln!("  • Press F1 for this help");
+    kprintln!();
+}
+
+/// Simple user prompt for yes/no questions
+pub async fn prompt_yes_no(question: &str) -> bool {
+    loop {
+        let response = interactive_prompt(&format!("{} (y/n): ", question), 10).await;
+        let response = response.trim().to_lowercase();
+        
+        match response.as_str() {
+            "y" | "yes" | "1" | "true" => return true,
+            "n" | "no" | "0" | "false" => return false,
+            "" => return false, // Default to no
+            _ => {
+                kprintln!("Please enter 'y' for yes or 'n' for no.");
+            }
+        }
+    }
+}
+
+/// Prompt for a number within a range
+pub async fn prompt_number(question: &str, min: i32, max: i32) -> i32 {
+    loop {
+        let prompt = format!("{} ({}-{}): ", question, min, max);
+        let response = interactive_prompt(&prompt, 10).await;
+        
+        if let Ok(num) = response.trim().parse::<i32>() {
+            if num >= min && num <= max {
+                return num;
+            } else {
+                kprintln!("Number must be between {} and {}.", min, max);
+            }
+        } else {
+            kprintln!("Please enter a valid number.");
+        }
+    }
+}
+
+/// Interactive menu selection
+pub async fn interactive_menu(title: &str, options: &[&str]) -> usize {
+    loop {
+        kprintln!();
+        kprintln!("📋 {}", title);
+        kprintln!("{}", "═".repeat(title.len() + 4));
+        
+        for (i, option) in options.iter().enumerate() {
+            kprintln!("  {}. {}", i + 1, option);
+        }
+        kprintln!();
+        
+        let choice = prompt_number(
+            "Select an option", 
+            1, 
+            options.len() as i32
+        ).await;
+        
+        return (choice - 1) as usize;
+    }
+}
+
+/// Demonstration function showcasing the interactive prompt system
+pub async fn demo_interactive_system() {
+    kprintln!();
+    kprintln!("🚀 Interactive System Demo");
+    kprintln!("==========================");
+    kprintln!();
+    
+    // Simple text input
+    let name = interactive_prompt("What's your name? ", 50).await;
+    if name.is_empty() {
+        kprintln!("Hello, Anonymous!");
+    } else {
+        kprintln!("Hello, {}!", name);
+    }
+    
+    // Yes/No question
+    let likes_rust = prompt_yes_no("Do you like Rust programming").await;
+    if likes_rust {
+        kprintln!("Great! Rust is awesome for OS development! 🦀");
+    } else {
+        kprintln!("That's okay, maybe you'll learn to love it!");
+    }
+    
+    // Number input
+    let age = prompt_number("What's your age", 1, 150).await;
+    kprintln!("Age {} is a great age for learning OS development!", age);
+    
+    // Menu selection
+    let favorite_color = interactive_menu(
+        "What's your favorite color?",
+        &["Red", "Green", "Blue", "Yellow", "Purple", "Orange"]
+    ).await;
+    
+    let colors = ["Red", "Green", "Blue", "Yellow", "Purple", "Orange"];
+    kprintln!("Excellent choice! {} is a beautiful color.", colors[favorite_color]);
+    
+    // Final message
+    kprintln!();
+    kprintln!("🎉 Demo complete! The interactive keyboard system is working!");
+    kprintln!("✨ Features demonstrated:");
+    kprintln!("  • Text input with character processing");
+    kprintln!("  • Backspace and special key handling");
+    kprintln!("  • Input validation and prompts");
+    kprintln!("  • Menu system with numbered options");
+    kprintln!("  • Yes/No prompts with multiple valid inputs");
+    kprintln!();
+}
+
+/// Simple interactive shell/command prompt
+pub async fn interactive_shell() {
+    kprintln!();
+    kprintln!("🖥️  PrismaOS Interactive Shell");
+    kprintln!("==============================");
+    kprintln!("Type 'help' for available commands, 'exit' to quit");
+    kprintln!();
+    
+    loop {
+        let input = interactive_prompt("prisma> ", 100).await;
+        let input = input.trim();
+        
+        if input.is_empty() {
+            continue;
+        }
+        
+        match input {
+            "exit" | "quit" => {
+                kprintln!("Goodbye! 👋");
+                break;
+            }
+            "help" => {
+                show_shell_help();
+            }
+            "clear" => {
+                // Clear screen if supported
+                kprintln!("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+                kprintln!("🖥️  PrismaOS Interactive Shell");
+                kprintln!("==============================");
+            }
+            "demo" => {
+                demo_interactive_system().await;
+            }
+            "keyboard" => {
+                test_keyboard_driver().await;
+            }
+            "system" => {
+                show_system_info();
+            }
+            cmd if cmd.starts_with("echo ") => {
+                let message = &cmd[5..];
+                kprintln!("{}", message);
+            }
+            _ => {
+                kprintln!("Unknown command: '{}'", input);
+                kprintln!("Type 'help' for available commands.");
+            }
+        }
+    }
+}
+
+/// Show help for the interactive shell
+fn show_shell_help() {
+    kprintln!();
+    kprintln!("📚 Available Commands:");
+    kprintln!("  help      - Show this help message");
+    kprintln!("  demo      - Run interactive system demo");
+    kprintln!("  keyboard  - Test keyboard driver");
+    kprintln!("  system    - Show system information");
+    kprintln!("  echo <msg>- Echo a message");
+    kprintln!("  clear     - Clear the screen");
+    kprintln!("  exit/quit - Exit the shell");
+    kprintln!();
+}
+
+/// Test keyboard driver functionality
+async fn test_keyboard_driver() {
+    kprintln!();
+    kprintln!("⌨️  Keyboard Driver Test");
+    kprintln!("========================");
+    kprintln!("Type some text to test the keyboard driver.");
+    kprintln!("Press ESC when done, or type 'done' and press Enter.");
+    kprintln!();
+    
+    let result = interactive_prompt("Test input: ", 200).await;
+    
+    if result.is_empty() {
+        kprintln!("Test cancelled.");
+    } else {
+        kprintln!();
+        kprintln!("✅ Keyboard test successful!");
+        kprintln!("You typed: '{}'", result);
+        kprintln!("Length: {} characters", result.len());
+        
+        // Character analysis
+        let alphabetic = result.chars().filter(|c| c.is_alphabetic()).count();
+        let numeric = result.chars().filter(|c| c.is_numeric()).count();
+        let spaces = result.chars().filter(|c| c.is_whitespace()).count();
+        let punctuation = result.len() - alphabetic - numeric - spaces;
+        
+        kprintln!("Analysis:");
+        kprintln!("  • Alphabetic: {}", alphabetic);
+        kprintln!("  • Numeric: {}", numeric);
+        kprintln!("  • Spaces: {}", spaces);
+        kprintln!("  • Other: {}", punctuation);
+    }
+    kprintln!();
+}
+
+/// Simple test function that can be called from main to demonstrate keyboard functionality
+pub async fn test_interactive_keyboard() {
+    kprintln!();
+    kprintln!("🎯 Testing Interactive Keyboard System");
+    kprintln!("======================================");
+    kprintln!();
+    kprintln!("This demonstrates the integration of:");
+    kprintln!("  • PS/2 Keyboard Driver (hardware level)");
+    kprintln!("  • Character processing and input handling");
+    kprintln!("  • Text rendering and display system");
+    kprintln!("  • Async keyboard event processing");
+    kprintln!();
+    
+    // Simple test
+    let test_input = interactive_prompt("Enter some text to test: ", 100).await;
+    
+    if test_input.is_empty() {
+        kprintln!("❌ No input received (cancelled or empty)");
+    } else {
+        kprintln!("✅ Success! You entered: '{}'", test_input);
+        kprintln!("   Length: {} characters", test_input.len());
+        
+        // Show character breakdown
+        let uppercase = test_input.chars().filter(|c| c.is_uppercase()).count();
+        let lowercase = test_input.chars().filter(|c| c.is_lowercase()).count();
+        let digits = test_input.chars().filter(|c| c.is_numeric()).count();
+        let spaces = test_input.chars().filter(|c| c.is_whitespace()).count();
+        
+        kprintln!("   Analysis: {} upper, {} lower, {} digits, {} spaces", 
+                 uppercase, lowercase, digits, spaces);
+    }
+    
+    kprintln!();
+    kprintln!("🎉 Keyboard integration test complete!");
+    kprintln!();
+}
+
+/// Show system information
+fn show_system_info() {
+    kprintln!();
+    kprintln!("💻 PrismaOS System Information");
+    kprintln!("==============================");
+    kprintln!("  OS: PrismaOS");
+    kprintln!("  Architecture: x86_64");
+    kprintln!("  Kernel: Rust-based microkernel");
+    kprintln!("  Uptime: {} ticks", crate::time::current_tick());
+    kprintln!("  Timestamp: {} ms", crate::time::get_timestamp());
+    
+    // Show driver status
+    let dm = crate::drivers::device_manager();
+    let driver_count = dm.driver_count();
+    kprintln!("  Drivers loaded: {}", driver_count);
+    
+    let driver_names = dm.list_drivers();
+    for name in driver_names {
+        kprintln!("    • {}", name);
+    }
+    kprintln!();
 }

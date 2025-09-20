@@ -6,6 +6,7 @@ pub mod framebuffer;
 pub mod keyboard;
 pub mod mouse;
 pub mod timer;
+pub mod ide;
 
 /// Device driver trait that all drivers must implement
 pub trait Driver: Send + Sync {

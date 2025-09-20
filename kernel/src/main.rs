@@ -33,7 +33,7 @@ mod utils;
 mod time;
 mod elf;
 mod gdt;
-mod api;
+pub mod api;
 
 /// Production-ready kernel main function using WORKING memory access pattern
 #[unsafe(no_mangle)]
@@ -134,6 +134,9 @@ unsafe extern "C" fn kmain() -> ! {
         }
         kprintln!("[OK] Bootstrap heap initialized (64KB)");
         
+        let input = scrolling_text::interactive_prompt_blocking("Hi", 10);
+        kprintln!("You typed: {}", input);
+
         // Initialize GDT (Global Descriptor Table)
         gdt::init();
         kprintln!("[OK] GDT initialized");
@@ -223,6 +226,10 @@ unsafe extern "C" fn kmain() -> ! {
         // Initialize device subsystem (temporarily simplified)
         // drivers::init_devices();
         kprintln!("[OK] Device drivers ready (init skipped for now)");
+
+                
+        // Uncomment the line below to test BSOD panic handler
+        panic!("Test panic for BSOD demonstration");
         
         // Display rainbow test canvas inline
         utils::color_test::show_rainbow_test();
@@ -236,9 +243,6 @@ unsafe extern "C" fn kmain() -> ! {
         
         kprintln!("");
         kprintln!("=== Entering idle state ===");
-        
-        // Uncomment the line below to test BSOD panic handler
-        // panic!("Test panic for BSOD demonstration");
     }
 
     #[cfg(test)]
@@ -250,6 +254,7 @@ unsafe extern "C" fn kmain() -> ! {
         core::arch::asm!("nop");
     }
     core::arch::asm!("hlt");
+
     loop {
         core::arch::asm!("hlt");
     }

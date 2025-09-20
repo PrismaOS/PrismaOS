@@ -10,6 +10,7 @@ use spin::{Mutex, RwLock};
 pub mod objects;
 pub mod syscalls;
 pub mod syscall_entry;
+pub mod commands;
 
 use objects::*;
 
