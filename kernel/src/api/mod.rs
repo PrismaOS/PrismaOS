@@ -5,7 +5,7 @@ use core::{
 };
 use heapless::FnvIndexMap;
 use serde::{Deserialize, Serialize};
-use spin::{Mutex, RwLock};
+use spin::RwLock;
 
 pub mod objects;
 pub mod syscalls;

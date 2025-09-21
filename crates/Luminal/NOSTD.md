@@ -38,7 +38,7 @@ extern crate alloc;
 
 The `no_std` version of Luminal uses:
 - `heapless` for bounded data structures
-- `parking_lot` for synchronization primitives (no_std compatible)
+- `spin` for synchronization primitives (no_std compatible)
 - `crossbeam-deque` for work stealing (no threading in no_std mode)
 
 ## Basic Usage
@@ -128,7 +128,7 @@ The runtime uses a fixed amount of memory:
 | Global Functions | `spawn()`, `block_on()` | None |
 | Queue Type | Unbounded channels | Bounded heapless queues |
 | Memory Model | Dynamic allocation | Fixed-size allocation |
-| Synchronization | Standard library primitives | parking_lot no_std |
+| Synchronization | Standard library primitives | spin no_std |
 
 ### Execution Model
 
@@ -442,5 +442,5 @@ When contributing to no_std support:
 
 - [Rust Embedded Book](https://doc.rust-lang.org/embedded-book/)
 - [heapless documentation](https://docs.rs/heapless/)
-- [parking_lot no_std guide](https://docs.rs/parking_lot/)
+- [spin no_std guide](https://docs.rs/spin/)
 - [Async programming in embedded Rust](https://book.embassy.dev/)

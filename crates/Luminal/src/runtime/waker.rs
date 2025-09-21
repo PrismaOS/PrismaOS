@@ -49,7 +49,7 @@ struct WakerData {
 
     /// Reference to the global task queue for re-enqueueing
     #[allow(dead_code)]
-    global_queue: Arc<parking_lot::Mutex<Deque<Task, 1024>>>,
+    global_queue: Arc<spin::Mutex<Deque<Task, 1024>>>,
 }
 
 /// Creates a task waker for the Luminal runtime (std version)
@@ -128,7 +128,7 @@ pub(crate) fn create_task_waker(task_id: TaskId, global_queue: Arc<Injector<Task
 ///
 /// A `Waker` that can be used to wake the specified task
 #[cfg(not(feature = "std"))]
-pub(crate) fn create_task_waker(task_id: TaskId, global_queue: Arc<parking_lot::Mutex<Deque<Task, 1024>>>) -> Waker {
+pub(crate) fn create_task_waker(task_id: TaskId, global_queue: Arc<spin::Mutex<Deque<Task, 1024>>>) -> Waker {
     // Define the vtable for our custom waker
     const VTABLE: RawWakerVTable = RawWakerVTable::new(
         // Clone function - safe pointer handling with alignment checks

@@ -5,6 +5,7 @@
 #![test_runner(crate::test_runner)]
 #![feature(custom_test_frameworks)]
 #![reexport_test_harness_main = "test_main"]
+#[allow(warnings)]
 
 use core::panic::PanicInfo;
 extern crate alloc;
@@ -14,6 +15,8 @@ use font::{PsfFont, FONT_PSF};
 
 mod scrolling_text;
 use scrolling_text::{ScrollingTextRenderer, init_global_renderer};
+
+use galleonfs::*;
 
 mod consts;
 pub use consts::*;
@@ -226,10 +229,6 @@ unsafe extern "C" fn kmain() -> ! {
         // Initialize device subsystem (temporarily simplified)
         // drivers::init_devices();
         kprintln!("[OK] Device drivers ready (init skipped for now)");
-
-                
-        // Uncomment the line below to test BSOD panic handler
-        // panic!("Test panic for BSOD demonstration");
         
         // Display rainbow test canvas inline
         utils::color_test::show_rainbow_test();

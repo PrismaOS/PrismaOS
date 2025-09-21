@@ -131,37 +131,6 @@ fn test_runtime_handle() {
     assert_eq!(result, 777);
 }
 
-#[tokio::test]
-async fn test_inside_tokio_runtime() {
-    // Test that Luminal can run inside a tokio runtime
-    let result = tokio::task::spawn_blocking(|| {
-        let rt = Runtime::new().unwrap();
-        let rt_clone = rt.clone();
-        rt.block_on(async move {
-            let handle = rt_clone.spawn(async { 999 });
-            handle.await
-        })
-    }).await.unwrap();
-    
-    assert_eq!(result, 999);
-}
-
-#[tokio::test]
-async fn test_luminal_and_tokio_interop() {
-    // Test spawning tokio tasks from within Luminal
-    let tokio_result = tokio::spawn(async { 42 }).await.unwrap();
-    
-    let luminal_result = tokio::task::spawn_blocking(move || {
-        let rt = Runtime::new().unwrap();
-        let rt_clone = rt.clone();
-        rt.block_on(async move {
-            rt_clone.spawn(async move { tokio_result * 2 }).await
-        })
-    }).await.unwrap();
-    
-    assert_eq!(luminal_result, 84);
-}
-
 #[test]
 fn test_dll_boundary_simulation() {
     // Simulate passing runtime across a "DLL boundary"

@@ -4,6 +4,9 @@
 //! that doesn't use threads but still provides the same API as the full executor.
 
 #[cfg(not(feature = "std"))]
+use spin::Mutex;
+
+#[cfg(not(feature = "std"))]
 use core::{future::Future, sync::atomic::{AtomicU64, AtomicUsize, Ordering}, task::Context};
 
 #[cfg(not(feature = "std"))]
@@ -31,7 +34,7 @@ use super::waker::create_task_waker;
 #[cfg(not(feature = "std"))]
 pub struct SimpleExecutor {
     /// Global task queue using heapless deque with fixed capacity
-    global_queue: Arc<parking_lot::Mutex<Deque<Task, 1024>>>,
+    global_queue: Arc<spin::Mutex<Deque<Task, 1024>>>,
 
     /// Counter for generating unique task IDs
     next_task_id: AtomicU64,
@@ -45,7 +48,7 @@ impl SimpleExecutor {
     /// Creates a new simple executor
     pub fn new() -> Self {
         SimpleExecutor {
-            global_queue: Arc::new(parking_lot::Mutex::new(Deque::new())),
+            global_queue: Arc::new(spin::Mutex::new(Deque::new())),
             next_task_id: AtomicU64::new(1),
             tasks_processed: Arc::new(AtomicUsize::new(0)),
         }
@@ -72,7 +75,7 @@ impl SimpleExecutor {
         let task = Task::new(task_id, Box::pin(wrapped_future));
 
         // Push to the back of the queue
-        let mut queue = self.global_queue.lock();
+    let mut queue = self.global_queue.lock();
         let _ = queue.push_back(task); // Ignore error if queue is full
 
         JoinHandle {

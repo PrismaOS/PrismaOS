@@ -14,12 +14,6 @@ readme = "README.md"
 name = "statue"
 crate-type = ["lib"]
 
-[dependencies]
-# No dependencies for a truly no-std library
-
-[dev-dependencies]
-# For testing only - these won't be included in no-std builds
-
 [features]
 default = []
 # Optional features for different architectures
