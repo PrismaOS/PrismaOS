@@ -1,0 +1,36 @@
+[package]
+name = "statue"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+description = "A no-std Rust library for parsing and executing ELF binaries in operating systems"
+repository = "https://github.com/yourusername/elfos"
+keywords = ["elf", "binary", "loader", "os", "no-std"]
+categories = ["no-std", "parser-implementations", "os"]
+readme = "README.md"
+
+[lib]
+name = "statue"
+crate-type = ["lib"]
+
+[features]
+default = []
+# Optional features for different architectures
+x86_64 = []
+aarch64 = []
+riscv = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+panic = "abort"
+
+[lints.rust]
+unsafe_code = "allow"

@@ -1,0 +1,37 @@
+[package]
+name = "luminal_rt"
+version = "0.3.0"
+edition = "2021"
+authors = ["Luminal Team"]
+description = "A DLL-boundary safe async runtime with tokio-compatible API"
+license = "MIT"
+repository = "https://github.com/tristanpoland/luminal"
+keywords = ["async", "runtime", "dll", "executor"]
+categories = ["asynchronous", "concurrency"]
+
+[features]
+default = []
+std = ["tokio", "crossbeam-channel", "crossbeam-deque/std"]
+
+[lib]
+name = "luminal"
+path = "src/lib.rs"
+
+[dependencies]
+crossbeam-queue = { version = "0.3.12", default-features = false, features = ["alloc"] }
+crossbeam-channel = { version = "0.5.8", optional = true }
+heapless = { version = "0.8", default-features = false }
+crossbeam-deque = { version = "0.8.6", default-features = false }
+crossbeam-utils = { version = "0.8.21", default-features = false }
+spin = { version = "0.9.8", default-features = false }
+slab = { version = "0.4.11", default-features = false }
+pin-project-lite = { version = "0.2.16", default-features = false }
+
+# std-only dependencies
+mio = { version = "1.0.2", optional = true }
+
+# for benchmarks and tests
+tokio = { version = "1.47.1", features = ["full"], optional = true }
+
+[dev-dependencies]
+futures = {workspace = true}

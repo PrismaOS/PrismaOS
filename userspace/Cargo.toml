@@ -1,0 +1,3 @@
+[workspace]
+members = ["compositor", "runtime", "apps/demo", "apps/boot_gui", "apps/hello_world", "apps/hello_prisma"]
+resolver = "2"

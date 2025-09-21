@@ -1,4 +1,9 @@
+/limine
+/ovmf
+*.iso
+*.hdd
+/iso_root
+INSTRUCTIONS.md
+.claude/settings.local.json
+/userspace/target
 /target
-**/*.rs.bk
-
-.vscode

@@ -1,0 +1,25 @@
+[package]
+name = "galleonfs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "A virtual filesystem library."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/galleonfs"
+
+[dependencies]
+limine = "0.5"
+spin = "0.9"
+linked_list_allocator = "0.10"
+x86_64 = "0.15"
+volatile = "0.4"
+futures = {workspace = true}
+conquer-once = { version = "0.4", default-features = false  }
+crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
+pc-keyboard = "0.7"
+pic8259 = "0.10"
+uart_16550 = "0.3"
+acpi = "5.0"
+futures-util = {workspace = true}
+hashbrown = "0.16.0"
+luminal_rt = { path = "../Luminal", default-features = false }

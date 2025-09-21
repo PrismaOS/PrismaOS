@@ -1,0 +1,118 @@
+use x86_64::{
+    structures::paging::{
+        mapper::MapToError, FrameAllocator, Mapper, Page, PageTable, PageTableFlags, PhysFrame,
+    },
+    PhysAddr, VirtAddr,
+};
+// Removed alloc::vec::Vec import to avoid heap allocation during early boot
+
+pub mod allocator;
+pub mod paging;
+pub mod dma;
+
+pub use allocator::{init_heap, init_bootstrap_heap, HEAP_SIZE, HEAP_START, heap_stats};
+pub use paging::init;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameAllocatorError;
+
+pub struct BootInfoFrameAllocator {
+    memory_regions: [Option<(PhysAddr, PhysAddr)>; 16], // Max 16 memory regions
+    region_count: usize,
+    current_region: usize,
+    next_frame: PhysAddr,
+}
+
+impl BootInfoFrameAllocator {
+    pub unsafe fn init(memory_map: &[&limine::memory_map::Entry]) -> Self {
+        let mut allocator = BootInfoFrameAllocator {
+            memory_regions: [None; 16],
+            region_count: 0,
+            current_region: 0,
+            next_frame: PhysAddr::new(0),
+        };
+        
+        // Store only usable memory regions without using Vec (no heap required)
+        for &entry in memory_map.iter() {
+            // Check if this is a usable memory region  
+            // Limine memory map entry types: we want usable regions only
+            if entry.length > 0 && allocator.region_count < 16 {
+                // For safety, skip the first 1MB to avoid potential firmware/boot loader areas
+                let safe_start = if entry.base < 0x100000 { 
+                    0x100000 
+                } else { 
+                    entry.base 
+                };
+                
+                if safe_start < entry.base + entry.length {
+                    // Align to 4KB boundaries
+                    let start_addr = PhysAddr::new((safe_start + 4095) & !4095);
+                    let end_addr = PhysAddr::new((entry.base + entry.length) & !4095);
+                    
+                    if start_addr < end_addr {
+                        allocator.memory_regions[allocator.region_count] = Some((start_addr, end_addr));
+                        allocator.region_count += 1;
+                    }
+                }
+            }
+        }
+        
+        // Start with the first region
+        if allocator.region_count > 0 {
+            if let Some((start, _)) = allocator.memory_regions[0] {
+                allocator.next_frame = start;
+            }
+        }
+        
+        allocator
+    }
+}
+
+unsafe impl FrameAllocator<x86_64::structures::paging::Size4KiB> for BootInfoFrameAllocator {
+    fn allocate_frame(&mut self) -> Option<PhysFrame> {
+        while self.current_region < self.region_count {
+            if let Some((start, end)) = self.memory_regions[self.current_region] {
+                if self.next_frame < end {
+                    let frame = PhysFrame::containing_address(self.next_frame);
+                    self.next_frame += 4096u64;
+                    return Some(frame);
+                }
+            }
+            
+            // Move to next region
+            self.current_region += 1;
+            if self.current_region < self.region_count {
+                if let Some((start, _)) = self.memory_regions[self.current_region] {
+                    self.next_frame = start;
+                }
+            }
+        }
+        
+        None // No more frames available
+    }
+}
+
+pub fn init_memory(
+    memory_map: &[&limine::memory_map::Entry],
+    physical_memory_offset: VirtAddr,
+) -> (impl Mapper<x86_64::structures::paging::Size4KiB>, BootInfoFrameAllocator) {
+    unsafe {
+        let level_4_table = paging::init(physical_memory_offset);
+        let frame_allocator = BootInfoFrameAllocator::init(memory_map);
+        (level_4_table, frame_allocator)
+    }
+}
+
+pub unsafe fn create_example_mapping(
+    page: Page,
+    mapper: &mut impl Mapper<x86_64::structures::paging::Size4KiB>,
+    frame_allocator: &mut impl FrameAllocator<x86_64::structures::paging::Size4KiB>,
+) {
+    use x86_64::structures::paging::PageTableFlags as Flags;
+
+    let frame = PhysFrame::containing_address(PhysAddr::new(0xb8000));
+    let flags = Flags::PRESENT | Flags::WRITABLE;
+
+    let map_to_result = mapper.map_to(page, frame, flags, frame_allocator);
+    map_to_result.expect("map_to failed").flush();
+}

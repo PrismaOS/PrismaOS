@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl:*)",
+      "Bash(cat:*)",
+      "Bash(cargo check:*)",
+      "Bash(make:*)",
+      "Bash(cargo build:*)",
+      "Read(//c/Users/redst/OneDrive/Documents/GitHub/**)",
+      "Bash(git checkout:*)",
+      "Bash(git stash:*)",
+      "Bash(timeout 60 cargo check --quiet)",
+      "Bash(timeout 30 cargo check --quiet)",
+      "Bash(timeout 20 cargo check)",
+      "Bash(timeout 30 cargo build --quiet)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo check --quiet)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release --quiet)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release --quiet -p boot-gui)",
+      "Bash(rustup target list:*)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release --target x86_64-unknown-linux-gnu -p boot-gui)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo build --release -p boot-gui)",
+      "Bash(timeout 60 cargo build --release --quiet)",
+      "Bash(rustc:*)",
+      "Bash(chmod:*)",
+      "Bash(./build_userspace.sh:*)",
+      "Bash(timeout 30 cargo build --release --quiet)",
+      "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo build --target=\"x86_64-prismaos\" --release)",
+      "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo build --target=\"x86_64-prismaos\" --release -Z build-std=core,alloc -Z build-std-features=panic_immediate_abort)",
+      "Bash(RUST_TARGET_PATH=\"../target-specs\" cargo +nightly build --target=\"x86_64-prismaos\" --release -Z build-std=core,alloc -Z build-std-features=panic_immediate_abort)",
+      "Bash(cargo:*)",
+      "Bash(timeout 10 cargo build --release)",
+      "Bash(timeout 180 cargo build --release)",
+      "Bash(timeout 60 cargo build --release)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
