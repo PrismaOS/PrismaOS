@@ -1,7 +1,11 @@
 use crate::kprintln;
+use alloc::string::{String, ToString};
 use ez_pci::PciAccess;
+use ids_rs::{parser::VendorBuilder, DeviceId, PciDatabase, VendorId};
 
 pub fn init_pci() -> PciAccess {
+    let db = PciDatabase::get();
+
     let mut pci = unsafe {
         PciAccess::new_pci()
     };
@@ -12,7 +16,7 @@ pub fn init_pci() -> PciAccess {
         kprintln!("Found bus: {}", bus);
         let mut specific_bus = pci.bus(bus);
         let mut device = specific_bus.device(bus).expect("Failed te fetch PCI device");
-        let functions = device.possible_functions();
+        let functions: core::ops::RangeInclusive<u8> = device.possible_functions();
 
         // Try to get vendor/device ID and class from function 0 (common for all functions)
         let fn0 = device.function(0);
@@ -88,9 +92,22 @@ pub fn init_pci() -> PciAccess {
             }
         }
 
+        let vendor_id = VendorId::new(vendor_id as u16);
+        let device_id = DeviceId::new(device_id as u16);
+        let mut vendor_name: &str = "Unknown Vendor";
+        let mut device_name: &str = "Unknown Device";
+
+        if let Some(vendor) = db.find_vendor(vendor_id) {
+            vendor_name = vendor.name();
+        }
+
+        if let Some(device) = db.find_device(vendor_id, device_id) {
+            device_name = device.name();
+        }
+
         // Print summary for this device
         kprintln!("  === Device Summary ===");
-        kprintln!("    Vendor: {:#06x}, Device: {:#06x}", vendor_id, device_id);
+        kprintln!("    Vendor: {}, Device: {}", vendor_name.to_string(), device_name.to_string());
         kprintln!("    Type: {}", pci_type);
         kprintln!("    Hardware: {} (class: {:#04x})", hw_type, class_code);
         kprintln!("  =====================");
