@@ -35,7 +35,7 @@ use port::*;
 use command::*;
 use error::*;
 
-use alloc::{vec::Vec, sync::Arc, boxed::Box};
+use alloc::{vec, vec::Vec, sync::Arc, boxed::Box};
 use spin::{Mutex, RwLock};
 use x86_64::{PhysAddr, VirtAddr};
 use core::ptr::{read_volatile, write_volatile};

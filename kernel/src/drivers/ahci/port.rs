@@ -4,7 +4,7 @@
 //! and low-level command execution. Each port can connect to a single
 //! SATA device and manages the command list and FIS structures.
 
-use alloc::{vec::Vec, sync::Arc, boxed::Box};
+use alloc::{vec, vec::Vec, sync::Arc, boxed::Box};
 use spin::Mutex;
 use core::ptr::{read_volatile, write_volatile};
 use core::mem;
@@ -154,7 +154,7 @@ impl AhciPort {
             write_volatile(&mut (*port_base).clbu, (phys_addr.as_u64() >> 32) as u32);
         }
         
-        self.command_list = Some(Arc::new(buffer));
+    self.command_list = Some(buffer);
         Ok(())
     }
 
@@ -173,7 +173,7 @@ impl AhciPort {
             write_volatile(&mut (*port_base).fbu, (phys_addr.as_u64() >> 32) as u32);
         }
         
-        self.fis_buffer = Some(Arc::new(buffer));
+    self.fis_buffer = Some(buffer);
         Ok(())
     }
 
@@ -350,7 +350,7 @@ impl AhciPort {
             let table_size = HBA_CMD_TBL_HEADER + (prdt_entries * HBA_PRDT_ENTRY_SIZE);
             
             let buffer = DmaBuffer::new(table_size).map_err(|_| AhciError::DmaError)?;
-            self.command_tables[slot as usize] = Some(Arc::new(buffer));
+            self.command_tables[slot as usize] = Some(buffer);
         }
 
         let table_buffer = self.command_tables[slot as usize].as_ref().unwrap();

@@ -352,7 +352,6 @@ impl AtaCommand {
 ///
 /// AHCI supports up to 32 concurrent commands per port.
 /// This structure manages command slot allocation and tracking.
-#[derive(Debug)]
 pub struct CommandQueue {
     /// Active commands by slot
     active_commands: [Option<ActiveCommand>; HBA_CMD_SLOT_MAX],
@@ -363,7 +362,7 @@ pub struct CommandQueue {
 }
 
 /// Active command tracking
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ActiveCommand {
     /// The command being executed
     command: AtaCommand,
@@ -415,7 +414,7 @@ impl CommandQueue {
 
         let active_cmd = ActiveCommand {
             command,
-            start_time: crate::time::get_ticks(),
+            start_time: crate::time::get_timestamp(),
             callback: None,
         };
 
@@ -446,7 +445,7 @@ impl CommandQueue {
         
         for (slot, active_cmd) in self.active_commands.iter().enumerate() {
             if let Some(cmd) = active_cmd {
-                let elapsed_ms = (current_time - cmd.start_time) * 1000 / crate::time::get_frequency();
+                let elapsed_ms = current_time.saturating_sub(cmd.start_time);
                 if elapsed_ms > cmd.command.timeout_ms as u64 {
                     timed_out.push(slot as u8);
                 }

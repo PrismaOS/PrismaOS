@@ -257,7 +257,7 @@ impl AhciDevice {
         let result = port.execute_command(command)?;
 
         if result.is_success() {
-            self.last_activity = crate::time::get_ticks();
+            self.last_activity = crate::time::get_timestamp();
             Ok(())
         } else {
             self.error_count += 1;
@@ -304,7 +304,7 @@ impl AhciDevice {
         let result = port.execute_command(command)?;
 
         if result.is_success() {
-            self.last_activity = crate::time::get_ticks();
+            self.last_activity = crate::time::get_timestamp();
             Ok(())
         } else {
             self.error_count += 1;
