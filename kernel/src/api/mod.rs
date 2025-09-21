@@ -1,9 +1,9 @@
-use alloc::{boxed::Box, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
+use conquer_once::spin::Lazy;
 use core::{
-    any::Any,
     sync::atomic::{AtomicU64, Ordering},
 };
-use heapless::FnvIndexMap;
+use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use spin::RwLock;
 
@@ -74,15 +74,15 @@ impl Rights {
 }
 
 pub struct ObjectRegistry {
-    objects: RwLock<FnvIndexMap<ObjectHandle, Arc<dyn KernelObject>, 64>>,
-    capabilities: RwLock<FnvIndexMap<ProcessId, Vec<Capability>, 16>>,
+    objects: RwLock<HashMap<ObjectHandle, Arc<dyn KernelObject>>>,
+    capabilities: RwLock<HashMap<ProcessId, Vec<Capability>>>,
 }
 
 impl ObjectRegistry {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         ObjectRegistry {
-            objects: RwLock::new(FnvIndexMap::new()),
-            capabilities: RwLock::new(FnvIndexMap::new()),
+            objects: RwLock::new(HashMap::new()),
+            capabilities: RwLock::new(HashMap::new()),
         }
     }
 
@@ -102,18 +102,16 @@ impl ObjectRegistry {
         let mut objects = self.objects.write();
         let mut capabilities = self.capabilities.write();
 
-        if objects.insert(handle, object).is_err() {
-            return Err(RegistryError::RegistryFull);
-        }
+        objects.insert(handle, object);
 
         match capabilities.entry(owner) {
-            heapless::Entry::Occupied(mut entry) => {
+            hashbrown::hash_map::Entry::Occupied(mut entry) => {
                 entry.get_mut().push(capability);
             }
-            heapless::Entry::Vacant(entry) => {
+            hashbrown::hash_map::Entry::Vacant(entry) => {
                 let mut caps = Vec::new();
                 caps.push(capability);
-                entry.insert(caps).map_err(|_| RegistryError::RegistryFull)?;
+                entry.insert(caps);
             }
         }
 
@@ -177,13 +175,13 @@ impl ObjectRegistry {
         };
 
         match capabilities.entry(to) {
-            heapless::Entry::Occupied(mut entry) => {
+            hashbrown::hash_map::Entry::Occupied(mut entry) => {
                 entry.get_mut().push(new_capability);
             }
-            heapless::Entry::Vacant(entry) => {
+            hashbrown::hash_map::Entry::Vacant(entry) => {
                 let mut caps = Vec::new();
                 caps.push(new_capability);
-                entry.insert(caps).map_err(|_| RegistryError::RegistryFull)?;
+                entry.insert(caps);
             }
         }
 
@@ -215,10 +213,10 @@ pub enum RegistryError {
     InsufficientRights,
 }
 
-static OBJECT_REGISTRY: ObjectRegistry = ObjectRegistry::new();
+static OBJECT_REGISTRY: Lazy<RwLock<ObjectRegistry>> = Lazy::new(|| RwLock::new(ObjectRegistry::new()));
 
-pub fn get_registry() -> &'static ObjectRegistry {
-    &OBJECT_REGISTRY
+pub fn get_registry() -> &'static RwLock<ObjectRegistry> {
+    &*OBJECT_REGISTRY
 }
 
 #[derive(Debug, Serialize, Deserialize)]

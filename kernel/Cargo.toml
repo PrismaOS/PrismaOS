@@ -21,8 +21,7 @@ futures-util = { workspace = true }
 heapless = { version = "0.7", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
-hash32 = "1.0.0"
-hash32-derive = "0.1.1"
+hashbrown = { version = "0.14", default-features = false, features = ["ahash"] }
 
 # Workspace dependencies
 galleonfs = { workspace = true }

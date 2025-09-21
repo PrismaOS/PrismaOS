@@ -137,7 +137,7 @@ impl EventDispatcher {
                 if registration.process_id == process_id {
                     // Get the event stream object
                     let api_process_id = process_id;
-                    if let Ok(stream_obj) = registry.get_object(
+                    if let Ok(stream_obj) = registry.read().get_object(
                         registration.stream_handle,
                         api_process_id,
                         crate::api::Rights::WRITE,
