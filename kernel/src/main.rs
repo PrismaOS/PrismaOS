@@ -229,7 +229,7 @@ unsafe extern "C" fn kmain() -> ! {
 
                 
         // Uncomment the line below to test BSOD panic handler
-        panic!("Test panic for BSOD demonstration");
+        // panic!("Test panic for BSOD demonstration");
         
         // Display rainbow test canvas inline
         utils::color_test::show_rainbow_test();

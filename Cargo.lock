@@ -534,6 +534,7 @@ dependencies = [
  "bootloader",
  "conquer-once",
  "crossbeam-queue",
+ "futures",
  "futures-util",
  "heapless",
  "lazy_static",
