@@ -41,7 +41,7 @@ use x86_64::{PhysAddr, VirtAddr};
 use core::ptr::{read_volatile, write_volatile};
 use crate::kprintln;
 use crate::memory::dma::{DmaBuffer, BufferId};
-use ez_pci::{PciAccess, PciFunction};
+use ez_pci::{PciAccess, PciFunction, BarWithSize};
 
 /// Global AHCI driver instance
 static AHCI_DRIVER: RwLock<Option<AhciDriver>> = RwLock::new(None);
@@ -241,16 +241,21 @@ impl AhciDriver {
 
         // Initialize each controller
         let num_controllers = driver.controllers.len();
+        // First, initialize all controllers
         for i in 0..num_controllers {
-            {
-                let mut ctrl = driver.controllers[i].lock();
-                ctrl.initialize()?;
-            }
-
-            // Discover devices on this controller
             let mut ctrl = driver.controllers[i].lock();
+            ctrl.initialize()?;
+        }
+        // Then, discover devices (avoid double borrow)
+        let mut controllers = core::mem::take(&mut driver.controllers);
+        for ctrl_arc in controllers.iter() {
+            let mut ctrl = ctrl_arc.lock();
+            // Temporarily drop the lock before mutably borrowing driver
+            drop(ctrl);
+            let mut ctrl = ctrl_arc.lock();
             driver.discover_devices(&mut ctrl)?;
         }
+        driver.controllers = controllers;
 
         kprintln!("AHCI: Initialized {} controllers with {} devices",
                  driver.controllers.len(), driver.devices.len());
@@ -320,12 +325,14 @@ impl AhciDriver {
 
         // Get ABAR (AHCI Base Address Register) - BAR5
         // Get ABAR (AHCI Base Address Register) - BAR5
-        let bar5 = pci_fn.bar_info(5);
-        let abar = match bar5 {
-            Some(bar_info) => PhysAddr::new(bar_info.address() as u64),
-            Some(bar) => PhysAddr::new(bar.address()),
-            None => return Err(AhciError::InvalidBar),
+        let bar_opt = pci_fn.read_bar_with_size(5).flatten();
+        let abar = match bar_opt {
+            Some(BarWithSize::Memory(mem)) => PhysAddr::new(mem.addr_and_size.addr_u64()),
+            _ => return Err(AhciError::InvalidBar),
         };
+        if abar.as_u64() == 0 {
+            return Err(AhciError::InvalidBar);
+        }
 
         let pci_info = PciDeviceInfo {
             bus,
