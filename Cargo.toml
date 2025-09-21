@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "crates/*",
+    "kernel"
+]
+resolver = "2"
+
+[workspace.dependencies]
+galleonfs = { path = "./crates/galleonfs" }
+futures-util = { version = "0.3.31", default-features = false }
+futures = { version = "0.3.31", default-features = false }

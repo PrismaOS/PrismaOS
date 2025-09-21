@@ -270,7 +270,7 @@ pub fn share_buffer_with_process(
     
     // Register with object registry
     let registry = crate::api::get_registry();
-    registry.register_object(
+    registry.write().register_object(
         alloc::sync::Arc::new(buffer_object),
         target_process,
         rights,

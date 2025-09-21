@@ -94,55 +94,6 @@ pub fn init_process_context(
     ProcessContext::new(entry_point, stack_top, page_table)
 }
 
-/// Switch to userspace - sets up segment registers and switches to ring 3
-#[no_mangle]
-pub unsafe extern "C" fn switch_to_userspace(context: *const ProcessContext) -> ! {
-    core::arch::asm!(
-        // Load new page table
-        "mov rax, [rdi + 0x90]",
-        "mov cr3, rax",
-        
-        // Set up for iretq to userspace
-        "mov rax, 0x23",    // User data segment (GDT entry 4, RPL 3)
-        "mov ds, ax",
-        "mov es, ax",
-        "mov fs, ax", 
-        "mov gs, ax",
-        
-        // Push stack frame for iretq
-        "push 0x23",        // SS (user stack segment)
-        "push [rdi + 0x38]", // RSP
-        "push [rdi + 0x88]", // RFLAGS 
-        "push 0x1B",        // CS (user code segment, RPL 3)
-        "push [rdi + 0x80]", // RIP
-        
-        // Load general purpose registers
-        "mov rax, [rdi + 0x00]",
-        "mov rbx, [rdi + 0x08]",
-        "mov rcx, [rdi + 0x10]",
-        "mov rdx, [rdi + 0x18]",
-        "mov rsi, [rdi + 0x20]",
-        "mov rbp, [rdi + 0x30]",
-        "mov r8,  [rdi + 0x40]",
-        "mov r9,  [rdi + 0x48]",
-        "mov r10, [rdi + 0x50]",
-        "mov r11, [rdi + 0x58]",
-        "mov r12, [rdi + 0x60]",
-        "mov r13, [rdi + 0x68]",
-        "mov r14, [rdi + 0x70]",
-        "mov r15, [rdi + 0x78]",
-        
-        // Load RDI last
-        "mov rdi, [rdi + 0x28]",
-        
-        // Switch to userspace
-        "iretq",
-        
-        in("rdi") context,
-        options(noreturn)
-    );
-}
-
 /// Save context on interrupt (called from interrupt handlers)
 #[no_mangle] 
 pub unsafe extern "C" fn save_context_on_interrupt(

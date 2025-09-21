@@ -6,3 +6,4 @@
 INSTRUCTIONS.md
 .claude/settings.local.json
 /userspace/target
+/target

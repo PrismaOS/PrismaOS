@@ -106,7 +106,7 @@ fn sys_create_object(frame: &SyscallFrame) -> u64 {
                     _ => return u64::MAX,
                 }
             ));
-            registry.register_object(surface, process_id, Rights::ALL)
+            registry.write().register_object(surface, process_id, Rights::ALL)
                 .map_err(|_| "Failed to register surface")
         }
         1 => {
@@ -122,13 +122,13 @@ fn sys_create_object(frame: &SyscallFrame) -> u64 {
                     _ => return u64::MAX,
                 }
             ));
-            registry.register_object(buffer, process_id, Rights::ALL)
+            registry.write().register_object(buffer, process_id, Rights::ALL)
                 .map_err(|_| "Failed to register buffer")
         }
         2 => {
             // Create EventStream
             let stream = Arc::new(EventStream::new());
-            registry.register_object(stream, process_id, Rights::ALL)
+            registry.write().register_object(stream, process_id, Rights::ALL)
                 .map_err(|_| "Failed to register event stream")
         }
         _ => Err("Unknown object type"),
@@ -149,7 +149,7 @@ fn sys_get_object(frame: &SyscallFrame) -> u64 {
 
     let registry = get_registry();
     
-    match registry.get_object(handle, process_id, required_rights) {
+    match registry.read().get_object(handle, process_id, required_rights) {
         Ok(_) => 0, // Success
         Err(_) => 1, // Error
     }
@@ -166,7 +166,7 @@ fn sys_call_object(frame: &SyscallFrame) -> u64 {
 
     let registry = get_registry();
     
-    let object = match registry.get_object(handle, process_id, Rights::WRITE) {
+    let object = match registry.read().get_object(handle, process_id, Rights::WRITE) {
         Ok(obj) => obj,
         Err(_) => return u64::MAX,
     };
@@ -211,7 +211,7 @@ fn sys_transfer_capability(frame: &SyscallFrame) -> u64 {
 
     let registry = get_registry();
     
-    match registry.transfer_capability(handle, from, to, rights) {
+    match registry.write().transfer_capability(handle, from, to, rights) {
         Ok(_) => 0,
         Err(_) => 1,
     }
@@ -223,7 +223,7 @@ fn sys_revoke_capability(frame: &SyscallFrame) -> u64 {
 
     let registry = get_registry();
     
-    match registry.revoke_capability(handle, process) {
+    match registry.write().revoke_capability(handle, process) {
         Ok(_) => 0,
         Err(_) => 1,
     }

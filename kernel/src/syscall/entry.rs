@@ -31,10 +31,10 @@ pub fn setup_syscall_msrs() {
         kprintln!("       User DS:   {:#x}", selectors.user_data().0);
         
         let result = Star::write(
-            selectors.kernel_code(),
-            selectors.kernel_data(), 
             selectors.user_code(),
-            selectors.user_data(),
+            selectors.user_data(), 
+            selectors.kernel_code(),
+            selectors.kernel_data(),
         );
         
         if let Err(e) = result {
