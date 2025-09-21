@@ -8,6 +8,7 @@ pub mod timer;
 pub mod ide;
 pub mod pci;
 pub mod speaker;
+pub mod ahci;
 
 /// Device driver trait that all drivers must implement
 pub trait Driver: Send + Sync {

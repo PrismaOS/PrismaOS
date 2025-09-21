@@ -48,6 +48,8 @@ pub mod api;
 mod usb;
 mod init;
 
+use drivers::{ahci::probe_port, ahci::consts::*};
+
 use drivers::pci::init_pci;
 
 // NOTE: speaker and other modules are available as `crate::speaker` if
