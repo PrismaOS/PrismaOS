@@ -115,7 +115,7 @@ impl AhciHba {
 
     /// Get pointer to HBA memory structure
     pub fn hba_mem(&self) -> *mut HbaMem {
-        self.base_addr.as_ptr::<HbaMem>()
+        self.base_addr.as_mut_ptr::<HbaMem>()
     }
 
     /// Get pointer to port registers
@@ -271,7 +271,7 @@ impl AhciDriver {
 
             // Scan all devices on this bus
             for device_num in 0..32 {
-                if let Ok(mut device) = pci_bus.device(device_num) {
+                if let Some(mut device) = pci_bus.device(device_num) {
                     // Check all functions
                     for function_num in device.possible_functions() {
                         if let Some(mut function) = device.function(function_num) {
@@ -320,7 +320,9 @@ impl AhciDriver {
 
         // Get ABAR (AHCI Base Address Register) - BAR5
         // Get ABAR (AHCI Base Address Register) - BAR5
-        let abar = match pci_fn.bar(5) {
+        let bar5 = pci_fn.bar_info(5);
+        let abar = match bar5 {
+            Some(bar_info) => PhysAddr::new(bar_info.address() as u64),
             Some(bar) => PhysAddr::new(bar.address()),
             None => return Err(AhciError::InvalidBar),
         };
@@ -336,8 +338,8 @@ impl AhciDriver {
 
         // Enable PCI bus mastering and memory space
         let mut cmd = pci_fn.command();
-        cmd.set_bus_master_enable(true);
-        cmd.set_memory_space_enable(true);
+        cmd.set_bus_master(true);
+        cmd.set_memory_space(true);
         pci_fn.set_command(cmd);
 
         // Create HBA mapping
