@@ -116,7 +116,7 @@ syscall_entry_asm:
 
 // Rust-side syscall entry called from assembly thunk.
 #[no_mangle]
-extern "C" fn syscall_entry_rust(frame_ptr: *mut SyscallFrame, user_rip: u64, user_rflags: u64) -> u64 {
+extern "C" fn syscall_entry_rust(frame_ptr: *mut SyscallFrame, _user_rip: u64, _user_rflags: u64) -> u64 {
     // SAFETY: assembly stub guarantees frame_ptr is valid
     let frame = unsafe { &*frame_ptr };
 

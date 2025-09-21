@@ -3,10 +3,6 @@
 /// This module provides the complete system call interface for userspace programs.
 /// It includes syscall dispatch, validation, and implementation of all system services.
 
-use alloc::{sync::Arc, vec::Vec, string::String};
-use core::arch::asm;
-use x86_64::{VirtAddr, structures::idt::InterruptStackFrame};
-
 use crate::{
     kprintln,
     api::ProcessId,

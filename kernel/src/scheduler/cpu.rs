@@ -1,5 +1,5 @@
-use alloc::{collections::VecDeque, sync::Arc, vec::Vec};
-use core::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use alloc::{collections::VecDeque, sync::Arc};
+use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use spin::Mutex;
 
 use super::{process::*, SchedulingPolicy, ProcessState};
@@ -100,7 +100,7 @@ impl CpuRunQueue {
         removed
     }
 
-    pub fn get_next_process(&self, policy: &SchedulingPolicy, current_tick: u64) -> Option<Arc<Process>> {
+    pub fn get_next_process(&self, policy: &SchedulingPolicy, _current_tick: u64) -> Option<Arc<Process>> {
         match policy {
             SchedulingPolicy::RoundRobin => self.round_robin_schedule(),
             SchedulingPolicy::PriorityBased => self.priority_schedule(),

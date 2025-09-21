@@ -27,6 +27,7 @@ luminal_rt = { workspace = true }
 
 # Workspace dependencies
 galleonfs = { workspace = true }
+ez_pci = "1.2.0"
 
 # CRITICAL: Set panic strategy to abort
 [profile.dev]

@@ -1,6 +1,6 @@
 use x86_64::{
     structures::paging::{
-        mapper::MapToError, FrameAllocator, Mapper, Page, PageTable, PageTableFlags, PhysFrame,
+        FrameAllocator, Mapper, Page, PhysFrame,
     },
     PhysAddr, VirtAddr,
 };
@@ -11,7 +11,6 @@ pub mod paging;
 pub mod dma;
 
 pub use allocator::{init_heap, init_bootstrap_heap, HEAP_SIZE, HEAP_START, heap_stats};
-pub use paging::init;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameAllocatorError;
@@ -71,7 +70,7 @@ impl BootInfoFrameAllocator {
 unsafe impl FrameAllocator<x86_64::structures::paging::Size4KiB> for BootInfoFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame> {
         while self.current_region < self.region_count {
-            if let Some((start, end)) = self.memory_regions[self.current_region] {
+            if let Some((_start, end)) = self.memory_regions[self.current_region] {
                 if self.next_frame < end {
                     let frame = PhysFrame::containing_address(self.next_frame);
                     self.next_frame += 4096u64;

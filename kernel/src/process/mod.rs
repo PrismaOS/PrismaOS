@@ -7,10 +7,10 @@
 /// - Process isolation and security
 
 use alloc::{sync::Arc, vec::Vec, string::String, collections::BTreeMap};
-use core::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize};
 use spin::{Mutex, RwLock};
 use x86_64::{
-    structures::paging::{PageTable, FrameAllocator, Mapper, Size4KiB, Page, PageTableFlags},
+    structures::paging::{PageTable, FrameAllocator, PageTableFlags},
     VirtAddr, PhysAddr,
 };
 
@@ -18,7 +18,6 @@ use crate::{
     kprintln,
     api::ProcessId,
     memory::BootInfoFrameAllocator,
-    elf::ElfLoader,
 };
 
 // pub mod context;
@@ -328,7 +327,7 @@ impl Process {
     pub fn load_elf(
         &self,
         elf_data: Vec<u8>,
-        frame_allocator: &mut BootInfoFrameAllocator
+        _frame_allocator: &mut BootInfoFrameAllocator
     ) -> Result<VirtAddr, ProcessError> {
         kprintln!("📦 Loading ELF into process {} ({} bytes)", self.id.as_u64(), elf_data.len());
         

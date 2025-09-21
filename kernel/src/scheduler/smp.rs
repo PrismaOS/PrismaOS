@@ -144,7 +144,7 @@ fn start_application_processors(cpu_count: usize) {
 }
 
 /// Start a specific Application Processor
-fn start_ap(cpu_id: usize) -> bool {
+fn start_ap(_pc_keyboardcpu_id: usize) -> bool {
     // In a real implementation, this would:
     // 1. Set up AP trampoline code in low memory
     // 2. Send INIT IPI to the target CPU

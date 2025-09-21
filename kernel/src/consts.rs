@@ -1,7 +1,6 @@
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker, HhdmRequest, MemoryMapRequest};
 use spin::Mutex;
-use core::panic::PanicInfo;
 use pic8259::ChainedPics;
 
 // PIC configuration

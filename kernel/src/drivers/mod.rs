@@ -3,10 +3,11 @@ use core::any::Any;
 use spin::RwLock;
 
 pub mod framebuffer;
-pub mod keyboard;
-pub mod mouse;
+pub mod ps2;
 pub mod timer;
 pub mod ide;
+pub mod pci;
+pub mod speaker;
 
 /// Device driver trait that all drivers must implement
 pub trait Driver: Send + Sync {
@@ -243,7 +244,7 @@ fn init_core_drivers() {
     }
     
     // Register keyboard driver
-    let kbd_driver = Arc::new(RwLock::new(keyboard::KeyboardDriver::new()));
+    let kbd_driver = Arc::new(RwLock::new(ps2::KeyboardDriver::new()));
     if let Err(e) = dm.register_driver(kbd_driver.clone()) {
         crate::println!("Failed to register keyboard driver: {:?}", e);
     } else {
@@ -251,12 +252,13 @@ fn init_core_drivers() {
     }
     
     // Register mouse driver
-    let mouse_driver = Arc::new(RwLock::new(mouse::MouseDriver::new()));
-    if let Err(e) = dm.register_driver(mouse_driver.clone()) {
-        crate::println!("Failed to register mouse driver: {:?}", e);
-    } else {
-        dm.register_irq_handler(44, mouse_driver); // IRQ 44 (32+12) for PS/2 mouse
-    }
+    // TODO: ps2 mouse driver should be created
+    // let mouse_driver = Arc::new(RwLock::new(mouse::MouseDriver::new()));
+    // if let Err(e) = dm.register_driver(mouse_driver.clone()) {
+    //     crate::println!("Failed to register mouse driver: {:?}", e);
+    // } else {
+    //     dm.register_irq_handler(44, mouse_driver); // IRQ 44 (32+12) for PS/2 mouse
+    // }
     
     // Register timer driver
     let timer_driver = Arc::new(RwLock::new(timer::TimerDriver::new()));
