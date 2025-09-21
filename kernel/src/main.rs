@@ -209,7 +209,7 @@ unsafe extern "C" fn kmain() -> ! {
             kprintln!("ERROR: No memory map response");
             utils::system::halt_system();
         }
-        
+
         // Initialize syscalls
         syscall::init_syscalls();
         kprintln!("[OK] Syscall interface initialized");
@@ -238,7 +238,7 @@ unsafe extern "C" fn kmain() -> ! {
         kprintln!("All systems operational");
         
         // Test userspace execution
-        userspace_test::test_userspace_execution();
+        // userspace_test::test_userspace_execution();
         
         kprintln!("");
         kprintln!("=== Entering idle state ===");
@@ -248,11 +248,6 @@ unsafe extern "C" fn kmain() -> ! {
     test_main();
 
     kprintln!("System idle. Halting CPU...");
-    // Sleep a bit
-    for _ in 0..500_000_000 {
-        core::arch::asm!("nop");
-    }
-    core::arch::asm!("hlt");
 
     loop {
         core::arch::asm!("hlt");

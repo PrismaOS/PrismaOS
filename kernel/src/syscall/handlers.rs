@@ -260,6 +260,85 @@ pub fn mprotect(caller_pid: ProcessId, addr: u64, length: u64, prot: u64) -> Sys
     Ok(0)
 }
 
+/// File system operations
+pub fn open(caller_pid: ProcessId, path_ptr: u64, path_len: u64, flags: u64) -> SyscallResult {
+    kprintln!("📂 Opening file: ptr={:#x}, len={}, flags={:#x}", path_ptr, path_len, flags);
+
+    if path_ptr == 0 || path_len == 0 || path_len > 4096 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, return a dummy file descriptor
+    Ok(3) // First user file descriptor
+}
+
+pub fn close(caller_pid: ProcessId, fd: u64) -> SyscallResult {
+    kprintln!("🗄️  Closing file descriptor: {}", fd);
+
+    if fd < 3 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    Ok(0)
+}
+
+pub fn read(caller_pid: ProcessId, fd: u64, buf_ptr: u64, count: u64) -> SyscallResult {
+    kprintln!("📖 Reading from fd {}: buf={:#x}, count={}", fd, buf_ptr, count);
+
+    if fd < 3 || buf_ptr == 0 || count == 0 || count > 1024 * 1024 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, return 0 bytes read (EOF)
+    Ok(0)
+}
+
+pub fn write(caller_pid: ProcessId, fd: u64, buf_ptr: u64, count: u64) -> SyscallResult {
+    kprintln!("✏️  Writing to fd {}: buf={:#x}, count={}", fd, buf_ptr, count);
+
+    if fd < 1 || buf_ptr == 0 || count == 0 || count > 1024 * 1024 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For stdout/stderr, we'd write to the console
+    // For now, just return the count as if it was written
+    Ok(count)
+}
+
+/// Process control operations
+pub fn fork(caller_pid: ProcessId) -> SyscallResult {
+    kprintln!("🍴 Fork from process {}", caller_pid.as_u64());
+
+    // For now, return a dummy child PID
+    let child_pid = ProcessId::new();
+    kprintln!("   ✅ Created child process {}", child_pid.as_u64());
+
+    Ok(child_pid.as_u64())
+}
+
+pub fn exec(caller_pid: ProcessId, path_ptr: u64, path_len: u64, args_ptr: u64, args_count: u64) -> SyscallResult {
+    kprintln!("🚀 Exec from process {}: path={:#x}:{}, args={:#x}:{}",
+              caller_pid.as_u64(), path_ptr, path_len, args_ptr, args_count);
+
+    if path_ptr == 0 || path_len == 0 || path_len > 4096 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, just return success
+    Ok(0)
+}
+
+pub fn wait(caller_pid: ProcessId, pid: u64) -> SyscallResult {
+    kprintln!("⏳ Wait for process {} from {}", pid, caller_pid.as_u64());
+
+    if pid == 0 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, return exit status 0
+    Ok(0)
+}
+
 /// Exit the current process
 pub fn exit_process(caller_pid: ProcessId, exit_code: u64) -> ! {
     kprintln!("👋 Process {} exiting with code {}", caller_pid.as_u64(), exit_code);

@@ -1,5 +1,5 @@
 /// System Call Entry Point
-/// 
+///
 /// This module handles the low-level syscall entry and exit, including
 /// setting up the SYSCALL/SYSRET mechanism and managing register state.
 
@@ -11,26 +11,26 @@ use crate::{kprintln, scheduler::get_current_process_id};
 use super::{dispatch_syscall, SyscallArgs};
 
 // Define the saved-register frame layout used by the assembly entry stub.
-// The assembly stub will push general-purpose registers in this order so
-// the Rust handler can read syscall number (in rax) and arguments.
+// This MUST match the exact order registers are pushed in the assembly code.
 #[repr(C)]
+#[derive(Debug)]
 pub struct SyscallFrame {
-    pub r15: u64,
-    pub r14: u64,
-    pub r13: u64,
-    pub r12: u64,
-    pub r11: u64,
-    pub r10: u64,
-    pub r9: u64,
-    pub r8: u64,
-    pub rbp: u64,
-    pub rdi: u64,
-    pub rsi: u64,
-    pub rdx: u64,
-    pub rcx: u64,
+    // Pushed in this exact order by assembly stub
+    pub rax: u64,    // Last pushed (offset 0 from RSP)
     pub rbx: u64,
-    pub rax: u64,
-    // The assembly stub will pass RIP and RFLAGS separately as arguments
+    pub rcx: u64,
+    pub rdx: u64,
+    pub rsi: u64,
+    pub rdi: u64,
+    pub rbp: u64,
+    pub r8: u64,
+    pub r9: u64,
+    pub r10: u64,
+    pub r11: u64,
+    pub r12: u64,
+    pub r13: u64,
+    pub r14: u64,
+    pub r15: u64,    // First pushed (highest offset)
 }
 
 extern "C" {
@@ -39,23 +39,26 @@ extern "C" {
 }
 
 // Assembly thunk for SYSCALL entry.
-// Behavior:
-//  - On entry (user executes `syscall`), CPU sets RIP to LSTAR and switches to kernel CS.
-//  - This thunk saves caller registers to the stack in a well-known layout and
-//    passes a pointer to that frame, plus saved RIP and RFLAGS, to `syscall_entry_rust`.
-//  - After Rust handler returns (return value in RAX), thunk restores registers
-//    and performs `sysretq` to return to userspace.
-// Note: Keep this asm minimal and careful about clobbers; we preserve call-clobbered regs.
+// This is the most critical part - any mistakes here will cause page faults!
 global_asm!(r#"
     .global syscall_entry_asm
     .type syscall_entry_asm, @function
 syscall_entry_asm:
-    // Save general-purpose registers in a fixed order
+    // SYSCALL instruction has already:
+    // - Saved user RIP in RCX
+    // - Saved user RFLAGS in R11
+    // - Set CS to kernel code segment
+    // - Set SS to kernel data segment (RSP unchanged)
+
+    // We need to save user registers and set up kernel stack
+    // CRITICAL: Push order must match SyscallFrame struct exactly!
+
+    // Save callee-saved and argument registers in reverse struct order
     push r15
     push r14
     push r13
     push r12
-    push r11
+    push r11        // Contains user RFLAGS
     push r10
     push r9
     push r8
@@ -63,29 +66,34 @@ syscall_entry_asm:
     push rdi
     push rsi
     push rdx
-    push rcx
+    push rcx        // Contains user RIP
     push rbx
-    push rax
+    push rax        // Contains syscall number
 
-    // At this point RSP points to the saved frame. Pass pointer in RDI (first arg) to C handler
+    // Now RSP points to our SyscallFrame
+    // Pass frame pointer as first argument (RDI)
     mov rdi, rsp
 
-    // The SYSCALL instruction places return RIP in RCX and RFLAGS in R11 per AMD/Intel conventions
-    // but for our Rust handler we also pass them explicitly: pass RCX (user RIP) in RSI, R11 (rflags) in RDX
-    mov rsi, rcx
-    mov rdx, r11
+    // Store user RIP and RFLAGS for potential use
+    mov rsi, rcx    // User RIP (second argument)
+    mov rdx, r11    // User RFLAGS (third argument)
 
-    // Call the Rust handler: extern "C" fn syscall_entry_rust(frame: *mut SyscallFrame, rip: u64, rflags: u64) -> u64
-    // The handler will return the result in RAX.
+    // Align stack to 16-byte boundary (required by System V ABI)
+    and rsp, -16
+
+    // Call the Rust handler
     call syscall_entry_rust
 
-    // After return, we expect RAX contains return value to user. Put it in the saved RAX slot.
-    mov [rsp + 8*0], rax  // top of saved pushes: rax is last pushed, which is at rsp (offset 0)
+    // Restore original stack pointer (frame is still there)
+    mov rsp, rdi
 
-    // Restore registers in reverse order
-    pop rax
+    // Store return value in frame's RAX slot
+    mov [rsp], rax
+
+    // Restore user registers in exact reverse order
+    pop rax         // Return value now in RAX
     pop rbx
-    pop rcx
+    pop rcx         // This restores user RIP for SYSRET
     pop rdx
     pop rsi
     pop rdi
@@ -93,36 +101,39 @@ syscall_entry_asm:
     pop r8
     pop r9
     pop r10
-    pop r11
+    pop r11         // This restores user RFLAGS for SYSRET
     pop r12
     pop r13
     pop r14
     pop r15
 
-
-
-    // Return to userspace using SYSRETQ - RCX and R11 hold user RIP and RFLAGS respectively
+    // SYSRET expects:
+    // - RCX = user RIP (already restored)
+    // - R11 = user RFLAGS (already restored)
+    // - RAX = return value (already set)
     sysretq
 "#);
 
 // Rust-side syscall entry called from assembly thunk.
-// Accepts a pointer to the saved frame, the return RIP, and RFLAGS. Returns a u64 syscall result.
 #[no_mangle]
-extern "C" fn syscall_entry_rust(frame_ptr: *mut SyscallFrame, _rip: u64, _rflags: u64) -> u64 {
-    // SAFETY: assembly ensures frame_ptr is valid and points to pushed registers
-    let frame = unsafe { &mut *frame_ptr };
+extern "C" fn syscall_entry_rust(frame_ptr: *mut SyscallFrame, user_rip: u64, user_rflags: u64) -> u64 {
+    // SAFETY: assembly stub guarantees frame_ptr is valid
+    let frame = unsafe { &*frame_ptr };
 
-    // Extract syscall number and args using the convention used by userspace runtime:
-    // Userspace places syscall number in RAX, args in RBX, RCX, RDX, RSI, RDI, R8
+    // Extract syscall arguments according to userspace ABI:
+    // syscall_num in RAX, arguments in RBX, RCX, RDX, RSI, RDI, R8
+    // BUT: RCX was overwritten by SYSCALL with user RIP, so we need to handle this
     let syscall_num = frame.rax;
     let arg0 = frame.rbx;
-    let arg1 = frame.rcx;
+    // arg1 would be in RCX, but SYSCALL overwrote it with user RIP
+    // So userspace needs to use a different register - let's use R9
+    let arg1 = frame.r9;   // Changed from RCX to R9 due to SYSCALL behavior
     let arg2 = frame.rdx;
     let arg3 = frame.rsi;
     let arg4 = frame.rdi;
     let arg5 = frame.r8;
 
-    // Get caller PID if available; do not panic if unavailable
+    // Get caller PID - create dummy if not available
     let caller_pid = get_current_process_id().unwrap_or_else(|| crate::api::ProcessId::new());
 
     let args = SyscallArgs {
@@ -135,11 +146,8 @@ extern "C" fn syscall_entry_rust(frame_ptr: *mut SyscallFrame, _rip: u64, _rflag
         arg5,
     };
 
-    // Dispatch syscall and convert result to u64
-    let result = dispatch_syscall(args, caller_pid);
-
-    // Return value will be placed in RAX by caller (assembly thunk)
-    result
+    // Dispatch syscall
+    dispatch_syscall(args, caller_pid)
 }
 
 /// Set up SYSCALL/SYSRET MSRs for fast system calls

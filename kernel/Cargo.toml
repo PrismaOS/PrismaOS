@@ -23,6 +23,8 @@ serde = { version = "1.0", default-features = false, features = ["derive", "allo
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
 hashbrown = { version = "0.14", default-features = false, features = ["ahash"] }
 
+luminal_rt = { workspace = true }
+
 # Workspace dependencies
 galleonfs = { workspace = true }
 
