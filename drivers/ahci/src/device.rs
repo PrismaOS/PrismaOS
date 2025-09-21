@@ -4,6 +4,8 @@
 //! It handles device identification, capability detection, and provides a unified
 //! interface for read/write operations regardless of the underlying device type.
 
+extern crate alloc;
+
 use alloc::{string::String, vec::Vec, sync::Arc};
 use spin::Mutex;
 use core::mem;

@@ -79,7 +79,11 @@ impl AhciPort {
             command_list: None,
             fis_buffer: None,
             command_tables: vec![None; HBA_CMD_SLOT_MAX],
-            available_slots: (1u32 << HBA_CMD_SLOT_MAX) - 1, // All slots available
+            available_slots: if HBA_CMD_SLOT_MAX < 32 {
+                (1u32 << HBA_CMD_SLOT_MAX) - 1
+            } else {
+                u32::MAX
+            }, // All slots available
             state: PortState::Uninitialized,
             device_signature: None,
             capabilities: PortCapabilities {

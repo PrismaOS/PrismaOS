@@ -22,6 +22,8 @@
 //! This driver performs extensive MMIO operations and DMA buffer management.
 //! All unsafe operations are carefully contained within safe abstractions.
 //! Memory barriers and volatile operations ensure hardware coherency.
+extern crate alloc;
+
 
 pub mod consts;
 pub mod device;

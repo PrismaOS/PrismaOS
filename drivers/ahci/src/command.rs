@@ -4,10 +4,10 @@
 //! through the AHCI interface. It provides high-level command abstractions
 //! and manages the low-level FIS (Frame Information Structure) construction.
 
+extern crate alloc;
 use alloc::{vec::Vec, sync::Arc};
 use crate::memory::dma::{DmaBuffer, BufferId};
 use super::{AhciError, AhciResult, consts::*};
-
 /// ATA command representation
 ///
 /// Encapsulates all information needed to execute an ATA command

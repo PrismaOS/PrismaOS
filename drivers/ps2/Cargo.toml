@@ -1,0 +1,65 @@
+[package]
+name = "ps2"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT OR Apache-2.0"
+description = "A no-std Rust library for parsing and executing ELF binaries in operating systems"
+repository = "https://github.com/yourusername/elfos"
+keywords = ["elf", "binary", "loader", "os", "no-std"]
+categories = ["no-std", "parser-implementations", "os"]
+readme = "README.md"
+
+[lib]
+name = "ps2"
+crate-type = ["lib"]
+
+[dependencies]
+kernel = { workspace = true }
+limine = "0.5"
+spin = "0.9"
+linked_list_allocator = "0.10"
+x86_64 = "0.15"
+volatile = "0.4"
+# Use futures crate with alloc only, not futures-util (which pulls in std)
+futures = {workspace = true}
+conquer-once = { version = "0.4", default-features = false }
+crossbeam-queue = { version = "0.3", default-features = false, features = ["alloc"] }
+pc-keyboard = "0.7"
+pic8259 = "0.10"
+uart_16550 = "0.3"
+acpi = "5.0"
+futures-util = { workspace = true }
+heapless = { version = "0.7", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+lazy_static = { version = "1.4", features = ["spin_no_std"] }
+hashbrown = { version = "0.14", default-features = false, features = ["ahash"] }
+
+luminal_rt = { workspace = true }
+
+# Workspace dependencies
+galleonfs = { workspace = true }
+ez_pci = "1.2.0"
+ids_rs = { git = "https://github.com/tristanpoland/IDS_RS", rev = "07a057efb6ed7db1c7ec68a4f5b5b12cd830763a", version = "0.1.0" }
+
+
+[features]
+default = []
+# Optional features for different architectures
+x86_64 = []
+aarch64 = []
+riscv = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+panic = "abort"
+
+[lints.rust]
+unsafe_code = "allow"

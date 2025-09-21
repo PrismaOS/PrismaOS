@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/*",
+    "drivers/*",
     "kernel"
 ]
 resolver = "2"
@@ -10,6 +11,7 @@ resolver = "2"
 # Internal crates
 galleonfs = { path = "./crates/galleonfs" }
 luminal_rt = { path = "./crates/Luminal/" }
+kernel = { path = "./kernel" }
 
 # External crates
 futures-util = { version = "0.3.31", default-features = false }

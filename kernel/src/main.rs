@@ -24,28 +24,27 @@
 use core::panic::PanicInfo;
 extern crate alloc;
 
-mod font;
-mod scrolling_text;
-mod consts;
+pub mod scrolling_text;
+pub mod consts;
+pub mod font;
 pub use consts::*;
 
-mod userspace_isolation;
-mod boot_userspace;
-mod userspace_test;
-mod interrupts;
-mod scheduler;
-mod executor;
-mod process;
-mod drivers;
-mod syscall;
-mod events;
-mod memory;
-mod utils;
-mod time;
-mod elf;
-mod gdt;
+pub mod userspace_isolation;
+pub mod boot_userspace;
+pub mod userspace_test;
+pub mod interrupts;
+pub mod scheduler;
+pub mod executor;
+pub mod process;
+pub mod drivers;
+pub mod syscall;
+pub mod events;
+pub mod memory;
+pub mod utils;
+pub mod time;
+pub mod elf;
+pub mod gdt;
 pub mod api;
-mod usb;
 mod init;
 
 use drivers::ahci;
