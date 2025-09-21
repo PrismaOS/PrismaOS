@@ -240,11 +240,15 @@ impl AhciDriver {
         driver.scan_pci_controllers()?;
 
         // Initialize each controller
-        for controller in &driver.controllers {
-            let mut ctrl = controller.lock();
-            ctrl.initialize()?;
+        let num_controllers = driver.controllers.len();
+        for i in 0..num_controllers {
+            {
+                let mut ctrl = driver.controllers[i].lock();
+                ctrl.initialize()?;
+            }
 
             // Discover devices on this controller
+            let mut ctrl = driver.controllers[i].lock();
             driver.discover_devices(&mut ctrl)?;
         }
 
@@ -315,12 +319,8 @@ impl AhciDriver {
         let device_id = pci_fn.device_id();
 
         // Get ABAR (AHCI Base Address Register) - BAR5
-        let bars = pci_fn.bars();
-        if bars.len() < 6 {
-            return Err(AhciError::InvalidBar);
-        }
-
-        let abar = match bars[5] {
+        // Get ABAR (AHCI Base Address Register) - BAR5
+        let abar = match pci_fn.bar(5) {
             Some(bar) => PhysAddr::new(bar.address()),
             None => return Err(AhciError::InvalidBar),
         };
@@ -336,7 +336,8 @@ impl AhciDriver {
 
         // Enable PCI bus mastering and memory space
         let mut cmd = pci_fn.command();
-        cmd |= 0x06; // Bus Master Enable + Memory Space Enable
+        cmd.set_bus_master_enable(true);
+        cmd.set_memory_space_enable(true);
         pci_fn.set_command(cmd);
 
         // Create HBA mapping
@@ -360,7 +361,12 @@ impl AhciDriver {
                 let port = controller.init_port(port_num)?;
 
                 // Check for device
-                if let Some(device) = port.lock().detect_device()? {
+                let device_opt = {
+                    let mut port_guard = port.lock();
+                    port_guard.detect_device()?
+                };
+
+                if let Some(device) = device_opt {
                     self.devices.push(Arc::new(Mutex::new(device)));
                     controller.ports[port_num] = Some(port);
 

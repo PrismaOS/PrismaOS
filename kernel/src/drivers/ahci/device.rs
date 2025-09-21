@@ -179,8 +179,10 @@ impl AhciDevice {
 
         // Issue IDENTIFY DEVICE command
         let command = AtaCommand::identify(buffer_id);
-        let mut port = self.port.lock();
-        let result = port.execute_command(command)?;
+        let result = {
+            let mut port = self.port.lock();
+            port.execute_command(command)?
+        };
 
         if !result.is_success() {
             return Err(AhciError::DeviceNotReady);
