@@ -1,8 +1,7 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use spin::{Mutex, RwLock};
 use x86_64::{
-    structures::paging::{PageTable, PhysFrame},
     VirtAddr, PhysAddr,
 };
 

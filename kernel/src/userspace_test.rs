@@ -6,12 +6,8 @@
 /// 3. Sets up syscall handling
 /// 4. Switches to userspace and runs the program
 
-use alloc::{sync::Arc, vec::Vec};
-use x86_64::VirtAddr;
-
 use crate::{
     kprintln,
-    process::{Process, register_process},
 };
 
 /// Test userspace execution with a simple "Hello World" program

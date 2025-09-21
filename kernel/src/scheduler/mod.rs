@@ -1,11 +1,7 @@
-use alloc::{collections::VecDeque, sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use spin::{Mutex, RwLock};
-use x86_64::{
-    registers::control::{Cr3, Cr3Flags},
-    structures::paging::{PhysFrame, PageTable},
-    PhysAddr, VirtAddr,
-};
+use spin::RwLock;
+use x86_64::VirtAddr;
 use crate::api::ProcessId;
 
 pub mod process;
@@ -93,7 +89,7 @@ impl Scheduler {
         let mut processes = self.processes.write();
         
         // Find empty slot or expand the table
-        let slot_index = if let Some(index) = processes.iter().position(|p| p.is_none()) {
+        let _slot_index = if let Some(index) = processes.iter().position(|p| p.is_none()) {
             processes[index] = Some(process.clone());
             index
         } else {
@@ -104,7 +100,7 @@ impl Scheduler {
 
         // Add to appropriate CPU run queue (load balancing)
         let target_cpu = self.select_cpu_for_new_process();
-        let mut queues = self.per_cpu_queues.write();
+        let queues = self.per_cpu_queues.write();
         queues[target_cpu].add_process(process);
 
         Ok(pid)
@@ -136,7 +132,7 @@ impl Scheduler {
             
             // Remove from run queue
             let cpu_id = process.assigned_cpu();
-            let mut queues = self.per_cpu_queues.write();
+            let queues = self.per_cpu_queues.write();
             if cpu_id < queues.len() {
                 queues[cpu_id].remove_process(pid);
             }
@@ -154,7 +150,7 @@ impl Scheduler {
                 let target_cpu = self.select_cpu_for_process(pid);
                 process.set_assigned_cpu(target_cpu);
                 
-                let mut queues = self.per_cpu_queues.write();
+                let queues = self.per_cpu_queues.write();
                 if target_cpu < queues.len() {
                     queues[target_cpu].add_process(process);
                 }
@@ -306,7 +302,7 @@ impl Scheduler {
     fn balance_load(&self, current_cpu: usize, current_tick: u64) {
         self.last_balance_tick.store(current_tick, Ordering::Relaxed);
         
-        let mut queues = self.per_cpu_queues.write();
+        let queues = self.per_cpu_queues.write();
         if current_cpu >= queues.len() {
             return;
         }

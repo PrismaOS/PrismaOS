@@ -1,4 +1,4 @@
-use alloc::{collections::VecDeque, sync::Arc, vec::Vec};
+use alloc::{collections::VecDeque, vec::Vec};
 use core::sync::atomic::{AtomicU64, Ordering};
 use spin::{Mutex, RwLock};
 
@@ -97,7 +97,7 @@ impl EventDispatcher {
 
     /// Dispatch an event to all registered streams that match the filter
     pub fn dispatch_event(&self, event: InputEvent) {
-        let event_id = self.event_counter.fetch_add(1, Ordering::Relaxed);
+        let _event_id = self.event_counter.fetch_add(1, Ordering::Relaxed);
         
         let streams = self.streams.read();
         let mut target_processes = Vec::new();

@@ -483,7 +483,7 @@ macro_rules! kprintln {
     };
     ($($arg:tt)*) => {
         {
-            use core::fmt::Write;
+            use alloc::fmt::Write;
             let mut writer = $crate::scrolling_text::LineWriter::new();
             let _ = write!(writer, $($arg)*);
             writer.write_line();

@@ -6,6 +6,11 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
+
+# Internal crates
 galleonfs = { path = "./crates/galleonfs" }
+luminal_rt = { path = "./crates/Luminal/" }
+
+# External crates
 futures-util = { version = "0.3.31", default-features = false }
 futures = { version = "0.3.31", default-features = false }

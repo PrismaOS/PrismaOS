@@ -1,6 +1,6 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicU64, Ordering};
-use spin::{Mutex, RwLock};
+use spin::RwLock;
 use x86_64::{PhysAddr, VirtAddr};
 use x86_64::structures::paging::{PhysFrame, Page, Size4KiB};
 
@@ -243,10 +243,10 @@ pub fn get_dma_buffer(id: BufferId) -> Option<Arc<DmaBuffer>> {
 /// Map a DMA buffer to userspace virtual address
 pub unsafe fn map_buffer_to_userspace(
     buffer_id: BufferId,
-    process_vaddr: VirtAddr,
-    writable: bool,
+    _process_vaddr: VirtAddr,
+    _writable: bool,
 ) -> Result<(), DmaError> {
-    let buffer = get_dma_buffer(buffer_id).ok_or(DmaError::BufferNotFound)?;
+    let _buffer = get_dma_buffer(buffer_id).ok_or(DmaError::BufferNotFound)?;
     
     // In a real implementation, we would:
     // 1. Get the process's page table

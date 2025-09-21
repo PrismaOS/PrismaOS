@@ -3,10 +3,6 @@
 /// This module provides the complete system call interface for userspace programs.
 /// It includes syscall dispatch, validation, and implementation of all system services.
 
-use alloc::{sync::Arc, vec::Vec, string::String};
-use core::arch::asm;
-use x86_64::{VirtAddr, structures::idt::InterruptStackFrame};
-
 use crate::{
     kprintln,
     api::ProcessId,
@@ -183,6 +179,13 @@ pub fn dispatch_syscall(args: SyscallArgs, caller_pid: ProcessId) -> u64 {
         SyscallNumber::Mmap => handlers::mmap(caller_pid, args.arg0, args.arg1, args.arg2, args.arg3),
         SyscallNumber::Munmap => handlers::munmap(caller_pid, args.arg0, args.arg1),
         SyscallNumber::Mprotect => handlers::mprotect(caller_pid, args.arg0, args.arg1, args.arg2),
+        SyscallNumber::Open => handlers::open(caller_pid, args.arg0, args.arg1, args.arg2),
+        SyscallNumber::Close => handlers::close(caller_pid, args.arg0),
+        SyscallNumber::Read => handlers::read(caller_pid, args.arg0, args.arg1, args.arg2),
+        SyscallNumber::Write => handlers::write(caller_pid, args.arg0, args.arg1, args.arg2),
+        SyscallNumber::Fork => handlers::fork(caller_pid),
+        SyscallNumber::Exec => handlers::exec(caller_pid, args.arg0, args.arg1, args.arg2, args.arg3),
+        SyscallNumber::Wait => handlers::wait(caller_pid, args.arg0),
         SyscallNumber::Exit => {
             // Exit doesn't return a value, it terminates the process
             Ok(0)
