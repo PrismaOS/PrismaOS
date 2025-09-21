@@ -115,34 +115,25 @@ impl X86_64 {
     fn cpuid_feature(&self, leaf: u32, bit: u32) -> bool {
         #[cfg(target_arch = "x86_64")]
         {
+            let mut eax: u32 = leaf;
+            let mut ecx: u32;
+            let mut edx: u32;
             unsafe {
-                let mut eax: u32;
-                let mut ecx: u32;
-                let mut edx: u32;
                 core::arch::asm!(
-                    "mov {leaf:e}, %eax",
                     "cpuid",
-                    "mov %eax, {eax:e}",
-                    "mov %ecx, {ecx:e}",
-                    "mov %edx, {edx:e}",
-                    leaf = in(reg) leaf,
-                    eax = out(reg) eax,
-                    ecx = out(reg) ecx,
-                    edx = out(reg) edx,
+                    inout("eax") eax,
+                    lateout("ecx") ecx,
+                    lateout("edx") edx,
                 );
-                // Check bit in ECX for leaf 1
-                if leaf == 1 && bit < 32 {
-                    (ecx & (1 << bit)) != 0
-                } else {
-                    // Check bit in EDX for other cases
-                    (edx & (1 << bit)) != 0
-                }
+            }
+            if leaf == 1 && bit < 32 {
+                (ecx & (1 << bit)) != 0
+            } else {
+                (edx & (1 << bit)) != 0
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            // For non-x86_64 platforms, assume features are available
-            // This allows the library to compile on other architectures
             true
         }
     }
@@ -151,23 +142,18 @@ impl X86_64 {
     fn cpuid_extended_feature(&self, leaf: u32, bit: u32) -> bool {
         #[cfg(target_arch = "x86_64")]
         {
+            let mut eax: u32 = leaf;
+            let mut ecx: u32;
+            let mut edx: u32;
             unsafe {
-                let mut eax: u32;
-                let mut ecx: u32;
-                let mut edx: u32;
                 core::arch::asm!(
-                    "mov {leaf:e}, %eax",
                     "cpuid",
-                    "mov %eax, {eax:e}",
-                    "mov %ecx, {ecx:e}",
-                    "mov %edx, {edx:e}",
-                    leaf = in(reg) leaf,
-                    eax = out(reg) eax,
-                    ecx = out(reg) ecx,
-                    edx = out(reg) edx,
+                    inout("eax") eax,
+                    lateout("ecx") ecx,
+                    lateout("edx") edx,
                 );
-                (edx & (1 << bit)) != 0
             }
+            (edx & (1 << bit)) != 0
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
