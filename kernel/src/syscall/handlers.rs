@@ -4,9 +4,6 @@
 /// Each function corresponds to a specific syscall and handles validation,
 /// execution, and error handling.
 
-use alloc::{sync::Arc, vec::Vec, string::String};
-use x86_64::VirtAddr;
-
 use crate::{
     kprintln,
     api::{ProcessId},
@@ -84,7 +81,7 @@ pub fn create_object(
 }
 
 /// Get a handle to an existing object
-pub fn get_object(caller_pid: ProcessId, handle: u64, rights: u64) -> SyscallResult {
+pub fn get_object(_caller_pid: ProcessId, handle: u64, rights: u64) -> SyscallResult {
     kprintln!("🔍 Getting object handle {:#x} with rights {:#x}", handle, rights);
     
     // For now, just validate the handle and return it
@@ -97,11 +94,11 @@ pub fn get_object(caller_pid: ProcessId, handle: u64, rights: u64) -> SyscallRes
 
 /// Call a method on an object
 pub fn call_object(
-    caller_pid: ProcessId,
+    _caller_pid: ProcessId,
     handle: u64,
     method: u64,
     arg1: u64,
-    arg2: u64,
+    _arg2: u64,
 ) -> SyscallResult {
     kprintln!("📞 Calling method {} on object {:#x}", method, handle);
     
@@ -162,7 +159,7 @@ pub fn call_object(
 }
 
 /// Transfer a capability to another process
-pub fn transfer_capability(caller_pid: ProcessId, handle: u64, target_pid: u64, rights: u64) -> SyscallResult {
+pub fn transfer_capability(_caller_pid: ProcessId, handle: u64, target_pid: u64, _rights: u64) -> SyscallResult {
     kprintln!("🔄 Transferring capability {:#x} to process {}", handle, target_pid);
     
     // For now, just return success
@@ -170,7 +167,7 @@ pub fn transfer_capability(caller_pid: ProcessId, handle: u64, target_pid: u64, 
 }
 
 /// Revoke a capability
-pub fn revoke_capability(caller_pid: ProcessId, handle: u64) -> SyscallResult {
+pub fn revoke_capability(_caller_pid: ProcessId, handle: u64) -> SyscallResult {
     kprintln!("🗑️  Revoking capability {:#x}", handle);
     
     // For now, just return success
@@ -189,7 +186,7 @@ pub fn create_process(caller_pid: ProcessId) -> SyscallResult {
 }
 
 /// Load an ELF binary into a process
-pub fn load_elf(caller_pid: ProcessId, process_id: u64, elf_ptr: u64, elf_len: u64) -> SyscallResult {
+pub fn load_elf(_caller_pid: ProcessId, process_id: u64, elf_ptr: u64, elf_len: u64) -> SyscallResult {
     kprintln!("📦 Loading ELF into process {} (ptr: {:#x}, len: {})", process_id, elf_ptr, elf_len);
     
     if elf_ptr == 0 || elf_len == 0 || elf_len > 16 * 1024 * 1024 {
@@ -209,7 +206,7 @@ pub fn load_elf(caller_pid: ProcessId, process_id: u64, elf_ptr: u64, elf_len: u
 }
 
 /// Start execution of a process
-pub fn start_process(caller_pid: ProcessId, process_id: u64, entry_point: u64) -> SyscallResult {
+pub fn start_process(_caller_pid: ProcessId, process_id: u64, entry_point: u64) -> SyscallResult {
     kprintln!("🚀 Starting process {} at entry point {:#x}", process_id, entry_point);
     
     if entry_point == 0 {
@@ -227,7 +224,7 @@ pub fn start_process(caller_pid: ProcessId, process_id: u64, entry_point: u64) -
 }
 
 /// Memory mapping operations
-pub fn mmap(caller_pid: ProcessId, addr: u64, length: u64, prot: u64, flags: u64) -> SyscallResult {
+pub fn mmap(_caller_pid: ProcessId, addr: u64, length: u64, prot: u64, flags: u64) -> SyscallResult {
     kprintln!("🗺️  mmap: addr={:#x}, len={:#x}, prot={:#x}, flags={:#x}", addr, length, prot, flags);
     
     if length == 0 {
@@ -239,7 +236,7 @@ pub fn mmap(caller_pid: ProcessId, addr: u64, length: u64, prot: u64, flags: u64
 }
 
 /// Memory unmapping
-pub fn munmap(caller_pid: ProcessId, addr: u64, length: u64) -> SyscallResult {
+pub fn munmap(_caller_pid: ProcessId, addr: u64, length: u64) -> SyscallResult {
     kprintln!("🗑️  munmap: addr={:#x}, len={:#x}", addr, length);
     
     if length == 0 {
@@ -250,13 +247,92 @@ pub fn munmap(caller_pid: ProcessId, addr: u64, length: u64) -> SyscallResult {
 }
 
 /// Memory protection changes
-pub fn mprotect(caller_pid: ProcessId, addr: u64, length: u64, prot: u64) -> SyscallResult {
+pub fn mprotect(_caller_pid: ProcessId, addr: u64, length: u64, prot: u64) -> SyscallResult {
     kprintln!("🔒 mprotect: addr={:#x}, len={:#x}, prot={:#x}", addr, length, prot);
     
     if length == 0 {
         return Err(SyscallError::InvalidArgument);
     }
     
+    Ok(0)
+}
+
+/// File system operations
+pub fn open(_caller_pid: ProcessId, path_ptr: u64, path_len: u64, flags: u64) -> SyscallResult {
+    kprintln!("📂 Opening file: ptr={:#x}, len={}, flags={:#x}", path_ptr, path_len, flags);
+
+    if path_ptr == 0 || path_len == 0 || path_len > 4096 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, return a dummy file descriptor
+    Ok(3) // First user file descriptor
+}
+
+pub fn close(_caller_pid: ProcessId, fd: u64) -> SyscallResult {
+    kprintln!("🗄️  Closing file descriptor: {}", fd);
+
+    if fd < 3 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    Ok(0)
+}
+
+pub fn read(_caller_pid: ProcessId, fd: u64, buf_ptr: u64, count: u64) -> SyscallResult {
+    kprintln!("📖 Reading from fd {}: buf={:#x}, count={}", fd, buf_ptr, count);
+
+    if fd < 3 || buf_ptr == 0 || count == 0 || count > 1024 * 1024 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, return 0 bytes read (EOF)
+    Ok(0)
+}
+
+pub fn write(_caller_pid: ProcessId, fd: u64, buf_ptr: u64, count: u64) -> SyscallResult {
+    kprintln!("✏️  Writing to fd {}: buf={:#x}, count={}", fd, buf_ptr, count);
+
+    if fd < 1 || buf_ptr == 0 || count == 0 || count > 1024 * 1024 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For stdout/stderr, we'd write to the console
+    // For now, just return the count as if it was written
+    Ok(count)
+}
+
+/// Process control operations
+pub fn fork(caller_pid: ProcessId) -> SyscallResult {
+    kprintln!("🍴 Fork from process {}", caller_pid.as_u64());
+
+    // For now, return a dummy child PID
+    let child_pid = ProcessId::new();
+    kprintln!("   ✅ Created child process {}", child_pid.as_u64());
+
+    Ok(child_pid.as_u64())
+}
+
+pub fn exec(caller_pid: ProcessId, path_ptr: u64, path_len: u64, args_ptr: u64, args_count: u64) -> SyscallResult {
+    kprintln!("🚀 Exec from process {}: path={:#x}:{}, args={:#x}:{}",
+              caller_pid.as_u64(), path_ptr, path_len, args_ptr, args_count);
+
+    if path_ptr == 0 || path_len == 0 || path_len > 4096 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, just return success
+    Ok(0)
+}
+
+pub fn wait(caller_pid: ProcessId, pid: u64) -> SyscallResult {
+    kprintln!("⏳ Wait for process {} from {}", pid, caller_pid.as_u64());
+
+    if pid == 0 {
+        return Err(SyscallError::InvalidArgument);
+    }
+
+    // For now, return exit status 0
     Ok(0)
 }
 

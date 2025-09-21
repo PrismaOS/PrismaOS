@@ -83,6 +83,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e4b40c7323adcfc0a41c4b88143ed58346ff65a288fc144329c5c45e05d70c6"
 
 [[package]]
+name = "bitfield"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62a3a774b2fcac1b726922b921ebba5e9fe36ad37659c822cf8ff2c1e0819892"
+dependencies = [
+ "bitfield-macros",
+]
+
+[[package]]
+name = "bitfield-macros"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52511b09931f7d5fe3a14f23adefbc23e5725b184013e96c8419febb61f14734"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -183,6 +203,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "ez_pci"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ad3d51133e66358adf63f89d2cd77e725c0ba898f21c8e33df6cb5f38b8bb33"
+dependencies = [
+ "acpi",
+ "bitfield",
+ "num_enum",
+ "volatile 0.6.1",
+ "x86_64 0.15.2",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -250,6 +283,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "galleon2"
+version = "0.1.0"
+
+[[package]]
 name = "galleonfs"
 version = "0.1.0"
 dependencies = [
@@ -266,7 +303,7 @@ dependencies = [
  "pic8259",
  "spin",
  "uart_16550",
- "volatile",
+ "volatile 0.4.6",
  "x86_64 0.15.2",
 ]
 
@@ -338,6 +375,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ids_rs"
+version = "0.1.0"
+source = "git+https://github.com/tristanpoland/IDS_RS?rev=07a057efb6ed7db1c7ec68a4f5b5b12cd830763a#07a057efb6ed7db1c7ec68a4f5b5b12cd830763a"
+dependencies = [
+ "heapless 0.8.0",
+]
+
+[[package]]
 name = "io-uring"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,20 +400,23 @@ dependencies = [
  "acpi",
  "conquer-once",
  "crossbeam-queue",
+ "ez_pci",
  "futures",
  "futures-util",
  "galleonfs",
  "hashbrown 0.14.5",
  "heapless 0.7.17",
+ "ids_rs",
  "lazy_static",
  "limine",
  "linked_list_allocator",
+ "luminal_rt",
  "pc-keyboard",
  "pic8259",
  "serde",
  "spin",
  "uart_16550",
- "volatile",
+ "volatile 0.4.6",
  "x86_64 0.15.2",
 ]
 
@@ -463,6 +511,27 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys",
+]
+
+[[package]]
+name = "num_enum"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a973b4e44ce6cad84ce69d797acf9a044532e4184c4f267913d1b546a0727b7a"
+dependencies = [
+ "num_enum_derive",
+ "rustversion",
+]
+
+[[package]]
+name = "num_enum_derive"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77e878c846a8abae00dd069496dbe8751b16ac1c3d6bd2a7283a938e8228f90d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -760,6 +829,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "442887c63f2c839b346c192d047a7c87e73d0689c9157b00b53dcc27dd5ea793"
 
 [[package]]
+name = "volatile"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af8ca9a5d4debca0633e697c88269395493cebf2e10db21ca2dbde37c1356452"
+dependencies = [
+ "volatile-macro",
+]
+
+[[package]]
+name = "volatile-macro"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65c67ce935f3b4329e473ecaff7bab444fcdc3d1d19f8bae61fabfa90b84f93e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -858,7 +947,7 @@ dependencies = [
  "bit_field",
  "bitflags 2.9.4",
  "rustversion",
- "volatile",
+ "volatile 0.4.6",
 ]
 
 [[package]]
@@ -870,7 +959,7 @@ dependencies = [
  "bit_field",
  "bitflags 2.9.4",
  "rustversion",
- "volatile",
+ "volatile 0.4.6",
 ]
 
 [[package]]

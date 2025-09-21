@@ -1,14 +1,12 @@
 use x86_64::{
     structures::{
         idt::InterruptStackFrame,
-        paging::{PageTableFlags, Page, Size4KiB, Mapper, FrameAllocator},
     },
-    VirtAddr, registers::segmentation::{Segment, CS},
+    VirtAddr,
 };
 use crate::{
     kprintln,
     api::ProcessId,
-    scheduler,
 };
 
 /// Handle userspace faults without crashing the kernel

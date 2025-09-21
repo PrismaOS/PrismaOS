@@ -1,6 +1,6 @@
 use x86_64::{
     registers::control::Cr3,
-    structures::paging::{PageTable, PhysFrame},
+    structures::paging::PageTable,
     PhysAddr, VirtAddr,
 };
 

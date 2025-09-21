@@ -1,11 +1,9 @@
-use alloc::vec::Vec;
 use crate::{
-    api::{ProcessId, get_registry, Rights}, 
-    elf::ElfLoader,
+    api::ProcessId, 
     memory::BootInfoFrameAllocator,
     kprintln
 };
-use x86_64::{VirtAddr, structures::paging::{Mapper, Size4KiB}};
+use x86_64::{structures::paging::{Mapper, Size4KiB}};
 
 // Simple embedded "userspace program" - just raw machine code  
 // This is a minimal x86_64 program that makes syscalls
