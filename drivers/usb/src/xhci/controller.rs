@@ -8,6 +8,7 @@ use super::{
     context::*,
     ring::*,
     trb::*,
+    transfer::*,
     XhciCapabilities,
     XhciPortStatus,
 };
@@ -52,6 +53,8 @@ pub struct XhciController {
     transfer_rings: BTreeMap<(u8, u8), TransferRing>, // (slot_id, endpoint_index)
     /// Device contexts
     device_contexts: BTreeMap<u8, Box<DeviceContext>>,
+    /// Transfer manager
+    transfer_manager: UsbTransferManager,
     /// Controller state
     state: ControllerState,
     /// IRQ line
