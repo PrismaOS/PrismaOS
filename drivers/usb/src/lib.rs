@@ -1,152 +1,297 @@
-//! # PrismaOS USB Driver (Modular)
+//! Comprehensive USB Host Controller Driver for PrismaOS
 //!
-//! This crate provides a modular, production-ready USB driver for PrismaOS, designed for both
-//! real-world use and as a teaching resource for OSDev learners. It demonstrates:
-//!
-//! - Modular bus/controller support (see `bus/`)
-//! - Device/class management (see below)
-//! - Kernel driver integration
-//! - Comprehensive documentation for education and production
-//!
-//! ## Directory Structure
-//! - `bus/`   : Hardware controller implementations (e.g., xHCI)
-//! - `class/` : (Future) USB class implementations
-//! - `lib.rs` : Driver entry point, device/class glue, kernel integration
-//!
-//! ## How to Extend
-//! - Implement a real hardware bus in `bus/` (see `bus/xhci.rs`)
-//! - Add USB classes in `class/`
-//! - Integrate with kernel events/interrupts
-//! - Use as a template for other drivers
+//! This driver provides a complete USB 3.0/2.0/1.1 host controller implementation
+//! using modular architecture with xHCI backend support. It handles device
+//! enumeration, configuration, transfer management, hub support, and USB class drivers.
 
+#![no_std]
+#![allow(dead_code)]
 
 extern crate alloc;
-use alloc::sync::Arc;
-use spin::RwLock;
 
-use lib_kernel::drivers::{Driver, DriverError};
-
-// Import USB stack types (use correct crate name: usb_device)
-use usb_device::{bus::UsbBusAllocator, device::{UsbDevice, UsbDeviceBuilder, UsbVidPid}, class::UsbClass};
-mod bus;
-
-/// Example USB class for demonstration (replace with real implementation as needed)
-pub struct KernelUsbClass<'a, B: usb_device::bus::UsbBus> {
-	_iface: usb_device::bus::InterfaceNumber,
-	_ep_in: usb_device::endpoint::EndpointIn<'a, B>,
-	_ep_out: usb_device::endpoint::EndpointOut<'a, B>,
-}
-
-impl<'a, B: usb_device::bus::UsbBus> KernelUsbClass<'a, B> {
-	pub fn new(alloc: &'a UsbBusAllocator<B>) -> Self {
-		Self {
-			_iface: alloc.interface(),
-			_ep_in: alloc.bulk(64),
-			_ep_out: alloc.bulk(64),
-		}
-	}
-}
-
-impl<'a, B: usb_device::bus::UsbBus> UsbClass<B> for KernelUsbClass<'a, B> {}
-
-/// The main USB driver struct
-///
-/// This struct manages the USB bus, allocator, device, and class.
-/// For production, replace the xHCI stub with a real implementation.
+use alloc::{boxed::Box, vec::Vec, collections::BTreeMap, sync::Arc};
+use core::{
+    fmt,
+    sync::atomic::{AtomicU8, Ordering},
+};
+use spin::{Mutex, RwLock};
 use xhci::accessor::Mapper;
 
-/// The main USB driver struct
-///
-/// This struct manages the USB bus, allocator, device, and class.
-/// For production, replace the xHCI stub with a real implementation.
-pub struct UsbDriver<M: Mapper + Clone + 'static> {
-	/// USB bus allocator (for endpoint/class allocation)
-	bus_allocator: Option<Box<UsbBusAllocator<bus::xhci::XhciBus<M>>>>,
-	/// USB device instance
-	usb_device: Option<Box<UsbDevice<'static, bus::xhci::XhciBus<M>>>>,
-	/// USB class instance
-	usb_class: Option<Box<KernelUsbClass<'static, bus::xhci::XhciBus<M>>>>,
+pub mod error;
+pub mod device;
+pub mod endpoint;
+pub mod transfer;
+pub mod hub;
+pub mod class;
+pub mod descriptor;
+pub mod controller;
+pub mod memory;
+pub mod async_ops;
+
+pub use error::UsbDriverError;
+pub use device::{UsbDevice, DeviceState, DeviceClass};
+pub use endpoint::{EndpointType, EndpointDirection, Endpoint};
+pub use transfer::{TransferType, Transfer, TransferBuffer};
+pub use hub::{UsbHub, PortStatus};
+pub use class::{UsbClassDriver, ClassType};
+pub use controller::{UsbController, ControllerState};
+
+/// USB Driver result type
+pub type Result<T> = core::result::Result<T, UsbDriverError>;
+
+/// USB Host Controller Driver
+pub struct UsbHostDriver {
+    /// xHCI controller instance
+    controller: Arc<Mutex<UsbController>>,
+    /// Connected devices
+    devices: Arc<RwLock<BTreeMap<u8, Arc<Mutex<UsbDevice>>>>>,
+    /// Root hub
+    root_hub: Arc<Mutex<UsbHub>>,
+    /// Class drivers
+    class_drivers: Arc<RwLock<Vec<Box<dyn UsbClassDriver + Send + Sync>>>>,
+    /// Memory allocator for USB operations
+    memory_allocator: Arc<Mutex<memory::UsbMemoryAllocator>>,
+    /// Driver state
+    state: Arc<AtomicU8>,
 }
 
-impl<M: Mapper + Clone + 'static> UsbDriver<M> {
-	/// Create a new USB driver (does not initialize hardware yet)
-	pub fn new() -> Self {
-		Self {
-			bus_allocator: None,
-			usb_device: None,
-			usb_class: None,
-		}
-	}
+/// USB driver state
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriverState {
+    Uninitialized = 0,
+    Initializing = 1,
+    Running = 2,
+    Suspended = 3,
+    Error = 4,
 }
 
-impl<M: Mapper + Clone + 'static> Driver for UsbDriver<M> {
-	fn name(&self) -> &'static str {
-		"usb"
-	}
-
-	fn init(&mut self) -> Result<(), DriverError> {
-		// --- USB Hardware Initialization ---
-		// 1. Create the bus (replace with real MMIO/IRQ params for your hardware)
-		// SAFETY: The caller must ensure exclusive access to the xHCI controller and provide correct MMIO base and mapper.
-		let mmio_base = 0xfee00000; // TODO: Replace with real MMIO base address
-		let mapper = unsafe { core::mem::zeroed() }; // TODO: Replace with real Mapper implementation
-		let bus = unsafe { bus::xhci::XhciBus::new(mmio_base, mapper) };
-		// 2. Create the allocator
-		let mut allocator = Box::new(UsbBusAllocator::new(bus));
-		// 3. Create the USB class (replace with your own class as needed)
-		let class = Box::new(KernelUsbClass::new(&allocator));
-		// 4. Build the USB device (update for correct builder API)
-		let mut ep0_buf = [0u8; 256];
-		let device_result = UsbDeviceBuilder::new(&*allocator, UsbVidPid(0x1234, 0x5678), &mut ep0_buf)
-			.build();
-		let device = match device_result {
-			Ok(dev) => Box::new(dev),
-			Err(_) => return Err(DriverError::Unknown),
-		};
-		// 5. Store in struct for later use
-		self.bus_allocator = Some(allocator);
-		self.usb_class = Some(class);
-		self.usb_device = Some(device);
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<(), DriverError> {
-		// Clean up USB resources if needed
-		Ok(())
-	}
-
-	fn interrupt_handler(&mut self, _irq: u8) -> bool {
-		// In a real system, this would be called by the kernel when a USB interrupt fires.
-		// For now, we simply poll the device for events.
-		poll_usb_driver(self);
-		// Return true if an event was handled (for now, always true if device is present)
-		self.usb_device.is_some()
-	}
-
-	fn as_any(&self) -> &dyn core::any::Any {
-		self
-	}
+impl From<u8> for DriverState {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => DriverState::Uninitialized,
+            1 => DriverState::Initializing,
+            2 => DriverState::Running,
+            3 => DriverState::Suspended,
+            _ => DriverState::Error,
+        }
+    }
 }
 
+impl UsbHostDriver {
+    /// Create a new USB host driver instance
+    pub fn new<M: Mapper + Clone + Send + Sync + 'static>(
+        mmio_base: usize,
+        mapper: M,
+    ) -> Result<Self> {
+        let controller = UsbController::new(mmio_base, mapper)?;
+        let memory_allocator = memory::UsbMemoryAllocator::new()?;
+        let root_hub = UsbHub::new_root_hub()?;
 
+        Ok(Self {
+            controller: Arc::new(Mutex::new(controller)),
+            devices: Arc::new(RwLock::new(BTreeMap::new())),
+            root_hub: Arc::new(Mutex::new(root_hub)),
+            class_drivers: Arc::new(RwLock::new(Vec::new())),
+            memory_allocator: Arc::new(Mutex::new(memory_allocator)),
+            state: Arc::new(AtomicU8::new(DriverState::Uninitialized as u8)),
+        })
+    }
 
-/// Register the USB driver with the kernel device manager
-pub fn register_usb_driver<M: Mapper + Clone + 'static>() {
-	use lib_kernel::drivers::device_manager;
-	let driver = Arc::new(RwLock::new(UsbDriver::<M>::new()));
-	let _ = device_manager().register_driver(driver);
+    /// Initialize the USB host driver
+    pub async fn initialize(&self) -> Result<()> {
+        self.state.store(DriverState::Initializing as u8, Ordering::SeqCst);
+
+        // Initialize controller
+        {
+            let mut controller = self.controller.lock();
+            controller.initialize().await?;
+        }
+
+        // Initialize root hub
+        {
+            let mut root_hub = self.root_hub.lock();
+            root_hub.initialize().await?;
+        }
+
+        // Start device enumeration
+        self.enumerate_devices().await?;
+
+        self.state.store(DriverState::Running as u8, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Get current driver state
+    pub fn state(&self) -> DriverState {
+        DriverState::from(self.state.load(Ordering::Acquire))
+    }
+
+    /// Register a USB class driver
+    pub fn register_class_driver(&self, driver: Box<dyn UsbClassDriver + Send + Sync>) {
+        let mut drivers = self.class_drivers.write();
+        drivers.push(driver);
+    }
+
+    /// Enumerate all connected USB devices
+    pub async fn enumerate_devices(&self) -> Result<()> {
+        let mut root_hub = self.root_hub.lock();
+        let port_count = root_hub.port_count();
+
+        for port in 0..port_count {
+            if let Some(device) = root_hub.probe_port(port).await? {
+                self.add_device(device).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add a newly discovered device
+    async fn add_device(&self, mut device: UsbDevice) -> Result<()> {
+        // Configure device
+        device.configure().await?;
+
+        // Find appropriate class driver
+        let device_address = device.address();
+        let class_drivers = self.class_drivers.read();
+        for driver in class_drivers.iter() {
+            if driver.supports_device(&device) {
+                driver.attach_device(device_address).await?;
+                break;
+            }
+        }
+
+        // Store device
+        let mut devices = self.devices.write();
+        devices.insert(device_address, Arc::new(Mutex::new(device)));
+
+        Ok(())
+    }
+
+    /// Remove a disconnected device
+    pub async fn remove_device(&self, address: u8) -> Result<()> {
+        let mut devices = self.devices.write();
+        if let Some(device_arc) = devices.remove(&address) {
+            let device = device_arc.lock();
+
+            // Notify class drivers
+            let class_drivers = self.class_drivers.read();
+            for driver in class_drivers.iter() {
+                if driver.supports_device(&device) {
+                    driver.detach_device(address).await?;
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Get device by address
+    pub fn get_device(&self, address: u8) -> Option<Arc<Mutex<UsbDevice>>> {
+        let devices = self.devices.read();
+        devices.get(&address).cloned()
+    }
+
+    /// Submit a USB transfer
+    pub async fn submit_transfer(&self, transfer: Transfer) -> Result<usize> {
+        let mut controller = self.controller.lock();
+        controller.submit_transfer(transfer).await
+    }
+
+    /// Handle USB events (called from interrupt handler)
+    pub async fn handle_events(&self) -> Result<()> {
+        let mut controller = self.controller.lock();
+        let events = controller.poll_events().await?;
+
+        for event in events {
+            match event {
+                controller::UsbEvent::DeviceConnected { port } => {
+                    // Handle device connection
+                    let mut root_hub = self.root_hub.lock();
+                    if let Some(device) = root_hub.probe_port(port).await? {
+                        self.add_device(device).await?;
+                    }
+                }
+                controller::UsbEvent::DeviceDisconnected { address } => {
+                    // Handle device disconnection
+                    self.remove_device(address).await?;
+                }
+                controller::UsbEvent::TransferComplete { transfer_id, status } => {
+                    // Handle transfer completion
+                    controller.complete_transfer(transfer_id, status).await?;
+                }
+                controller::UsbEvent::Error { error } => {
+                    // Handle error
+                    log::error!("USB Error: {:?}", error);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Suspend the USB driver
+    pub async fn suspend(&self) -> Result<()> {
+        self.state.store(DriverState::Suspended as u8, Ordering::SeqCst);
+
+        let mut controller = self.controller.lock();
+        controller.suspend().await?;
+
+        Ok(())
+    }
+
+    /// Resume the USB driver
+    pub async fn resume(&self) -> Result<()> {
+        let mut controller = self.controller.lock();
+        controller.resume().await?;
+
+        self.state.store(DriverState::Running as u8, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Shutdown the USB driver
+    pub async fn shutdown(&self) -> Result<()> {
+        // Remove all devices
+        let mut devices = self.devices.write();
+        let addresses: Vec<u8> = devices.keys().cloned().collect();
+        for address in addresses {
+            if let Some(_device) = devices.remove(&address) {
+                // Notify class drivers about device removal
+                let class_drivers = self.class_drivers.read();
+                for driver in class_drivers.iter() {
+                    // Attempt to detach without handling errors during shutdown
+                    let _ = driver.detach_device(address).await;
+                }
+            }
+        }
+
+        // Shutdown controller
+        let mut controller = self.controller.lock();
+        controller.shutdown().await?;
+
+        self.state.store(DriverState::Uninitialized as u8, Ordering::SeqCst);
+        Ok(())
+    }
 }
 
-/// Poll the USB device for events (should be called from the kernel event loop or interrupt handler)
-///
-/// This function processes USB events, such as transfers and state changes. It should be called
-/// regularly (e.g., from a timer, main loop, or hardware interrupt) to keep the USB stack responsive.
-pub fn poll_usb_driver<M: Mapper + Clone + 'static>(driver: &mut UsbDriver<M>) {
-	if let (Some(device), Some(class)) = (driver.usb_device.as_mut(), driver.usb_class.as_mut()) {
-		// Poll the USB device. This will call into the bus and class as needed.
-		if device.poll(&mut [class.as_mut()]) {
-			// Handle any events or completed transfers here if needed
-			// (e.g., notify the kernel, update state, etc.)
-		}
-	}
+unsafe impl Send for UsbHostDriver {}
+unsafe impl Sync for UsbHostDriver {}
+
+impl fmt::Debug for UsbHostDriver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UsbHostDriver")
+            .field("state", &self.state())
+            .finish()
+    }
+}
+
+/// Initialize the USB subsystem
+pub async fn init_usb_subsystem<M: Mapper + Clone + Send + Sync + 'static>(
+    mmio_base: usize,
+    mapper: M,
+) -> Result<Arc<UsbHostDriver>> {
+    let driver = Arc::new(UsbHostDriver::new(mmio_base, mapper)?);
+    driver.initialize().await?;
+    Ok(driver)
 }

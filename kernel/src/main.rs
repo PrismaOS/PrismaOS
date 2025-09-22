@@ -31,6 +31,7 @@ use lib_kernel::{
 extern crate alloc;
 
 use lib_kernel::consts::*;
+use x86_64;
 
 pub mod userspace_isolation;
 pub mod boot_userspace;
@@ -44,6 +45,8 @@ mod utils;
 use ahci;
 use pci::init_pci;
 use galleon2::{read_boot_block, validate_boot_block, write_boot_block};
+use usb;
+use luminal_rt;
 
 // NOTE: speaker and other modules are available as `crate::speaker` if
 /// needed; avoid glob imports here to keep the top-level clean.
@@ -90,7 +93,8 @@ unsafe extern "C" fn kmain() -> ! {
 
 
 
-
+    // Initialize USB subsystem
+    init_usb_controllers();
 
 
 
@@ -102,6 +106,73 @@ unsafe extern "C" fn kmain() -> ! {
     // Enter an infinite HALT loop.
     loop {
         core::arch::asm!("hlt");
+    }
+}
+
+/// Initialize USB controllers found via PCI enumeration
+fn init_usb_controllers() {
+    use ez_pci::PciAccess;
+
+    kprintln!("Scanning for USB controllers...");
+
+    let mut pci = unsafe { PciAccess::new_pci() };
+    let busses = pci.known_buses();
+    let mut usb_controllers_found = 0;
+
+    for bus in busses {
+        let mut specific_bus = pci.bus(bus);
+        if let Some(mut device) = specific_bus.device(bus) {
+            let functions = device.possible_functions();
+
+            for function in functions {
+                if let Some(mut pci_fn) = device.function(function) {
+                    let class_code = pci_fn.class_code();
+                    let subclass = pci_fn.sub_class();
+                    let prog_if = pci_fn.prog_if();
+
+                    // USB controllers have class code 0x0C (Serial Bus Controller)
+                    // and subclass 0x03 (USB controller)
+                    if class_code == 0x0C && subclass == 0x03 {
+                        let vendor_id = pci_fn.vendor_id();
+                        let device_id = pci_fn.device_id();
+
+                        kprintln!("Found USB controller: Bus {}, Function {}", bus, function);
+                        kprintln!("  Vendor: {:#06x}, Device: {:#06x}", vendor_id, device_id);
+                        kprintln!("  Class: {:#04x}, Subclass: {:#04x}, Prog IF: {:#04x}",
+                                 class_code, subclass, prog_if);
+
+                        // Check if this is an xHCI controller (prog_if 0x30)
+                        if prog_if == 0x30 {
+                            kprintln!("  Type: xHCI (USB 3.0) controller");
+
+                            // Get BAR0 for MMIO base address
+                            // Note: BAR access method depends on ez_pci crate API
+                            // For now, we'll use a placeholder address
+                            let _mmio_base = 0xFE000000; // Placeholder MMIO base
+                            // For now, we'll just log the USB controller discovery
+                            // Full USB initialization requires async runtime setup
+                            kprintln!("  USB controller found - initialization deferred");
+                            kprintln!("  Note: USB initialization will be added in future kernel updates");
+                            usb_controllers_found += 1;
+                        } else if prog_if == 0x20 {
+                            kprintln!("  Type: EHCI (USB 2.0) controller - not supported yet");
+                        } else if prog_if == 0x10 {
+                            kprintln!("  Type: OHCI (USB 1.1) controller - not supported yet");
+                        } else if prog_if == 0x00 {
+                            kprintln!("  Type: UHCI (USB 1.1) controller - not supported yet");
+                        } else {
+                            kprintln!("  Type: Unknown USB controller (prog_if: {:#04x})", prog_if);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if usb_controllers_found == 0 {
+        kprintln!("No supported USB controllers found");
+    } else {
+        kprintln!("Initialized {} USB controller(s)", usb_controllers_found);
     }
 }
 

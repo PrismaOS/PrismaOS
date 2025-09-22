@@ -44,6 +44,7 @@ ids_rs = { git = "https://github.com/tristanpoland/IDS_RS", rev = "07a057efb6ed7
 # Local USB stack and xHCI controller crates
 usb_device = { path = "../../crates/usb" }
 xhci = { path = "../../crates/xhci" }
+log = "0.4"
 
 
 [features]

@@ -19,6 +19,7 @@ lib_kernel = { path = "./crates/lib_kernel/" }
 ide = { path = "./drivers/ide/" }
 ahci = { path = "./drivers/ahci/" }
 pci = { path = "./drivers/pci/" }
+usb = { path = "./drivers/usb/" }
 
 # External crates
 futures-util = { version = "0.3.31", default-features = false }
