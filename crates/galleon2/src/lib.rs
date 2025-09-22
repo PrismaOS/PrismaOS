@@ -94,7 +94,7 @@ pub fn write_boot_block(drive_num: u8) {
 /// # Returns
 /// - `true`: The drive contains a valid boot block with the correct magic string
 /// - `false`: The drive either has no boot block, contains a different filesystem,
-///            or the magic string doesn't match
+///            the magic string doesn't match, or the read operation failed
 /// 
 /// # Example
 /// ```rust
@@ -117,8 +117,12 @@ pub fn validate_boot_block(drive_num: u8) -> bool {
     let mut sector = [0u8; 512];
     
     // Read sector 0 (boot sector) from the specified drive
-    // Parameters: drive_number, starting_sector, sector_count, buffer
-    ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
+    // Check if the read operation succeeded (assuming 0 means success)
+    let result = ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
+    if result != 0 {
+        // Read failed, return false
+        return false;
+    }
     
     // Validate the magic string in the boot block
     BootBlock::is_valid(&sector)
@@ -151,7 +155,12 @@ pub fn read_boot_block(drive_num: u8) -> Option<BootBlock> {
     let mut sector = [0u8; 512];
     
     // Read sector 0 (boot sector) from the specified drive
-    ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
+    // Check if the read operation succeeded
+    let result = ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
+    if result != 0 {
+        // Read failed, return None
+        return None;
+    }
     
     // Check if it's valid first
     if BootBlock::is_valid(&sector) {
