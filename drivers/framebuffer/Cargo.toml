@@ -33,6 +33,7 @@ heapless = { version = "0.7", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
 hashbrown = { version = "0.14", default-features = false, features = ["ahash"] }
+lib_kernel = { workspace = true }
 
 luminal_rt = { workspace = true }
 

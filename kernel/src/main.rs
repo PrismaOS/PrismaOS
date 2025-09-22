@@ -22,34 +22,25 @@
 #![allow(warnings)]
 
 use core::panic::PanicInfo;
+use lib_kernel::{
+    kprintln,
+    consts::BASE_REVISION,
+    scrolling_text,
+};
 extern crate alloc;
 
-pub mod scrolling_text;
 pub mod consts;
-pub mod font;
 pub use consts::*;
 
 pub mod userspace_isolation;
 pub mod boot_userspace;
 pub mod userspace_test;
-pub mod interrupts;
-pub mod scheduler;
-pub mod executor;
-pub mod process;
-pub mod drivers;
-pub mod syscall;
-pub mod events;
-pub mod memory;
-pub mod utils;
-pub mod time;
-pub mod elf;
-pub mod gdt;
-pub mod api;
+
 mod init;
+mod utils;
 
-use drivers::ahci;
-
-use drivers::pci::init_pci;
+use ahci;
+use pci::init_pci;
 
 // NOTE: speaker and other modules are available as `crate::speaker` if
 /// needed; avoid glob imports here to keep the top-level clean.

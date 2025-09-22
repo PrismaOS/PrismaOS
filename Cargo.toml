@@ -11,7 +11,11 @@ resolver = "2"
 # Internal crates
 galleonfs = { path = "./crates/galleonfs" }
 luminal_rt = { path = "./crates/Luminal/" }
+ide = { path = "./drivers/ide/" }
 kernel = { path = "./kernel" }
+lib_kernel = { path = "./crates/lib_kernel/" }
+ahci = { path = "./drivers/ahci/" }
+pci = { path = "./drivers/pci/" }
 
 # External crates
 futures-util = { version = "0.3.31", default-features = false }

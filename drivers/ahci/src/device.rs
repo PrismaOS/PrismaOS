@@ -6,10 +6,9 @@
 
 extern crate alloc;
 
-use alloc::{string::String, vec::Vec, sync::Arc};
+use alloc::{string::String, sync::Arc};
 use spin::Mutex;
-use core::mem;
-use crate::memory::dma::{DmaBuffer, BufferId};
+use lib_kernel::memory::dma::{DmaBuffer, BufferId};
 use super::{AhciError, AhciResult, consts::*};
 use super::port::AhciPort;
 use super::command::{AtaCommand, CommandResult};
@@ -259,7 +258,7 @@ impl AhciDevice {
         let result = port.execute_command(command)?;
 
         if result.is_success() {
-            self.last_activity = crate::time::get_timestamp();
+            self.last_activity = lib_kernel::time::get_timestamp();
             Ok(())
         } else {
             self.error_count += 1;
@@ -306,7 +305,7 @@ impl AhciDevice {
         let result = port.execute_command(command)?;
 
         if result.is_success() {
-            self.last_activity = crate::time::get_timestamp();
+            self.last_activity = lib_kernel::time::get_timestamp();
             Ok(())
         } else {
             self.error_count += 1;

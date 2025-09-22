@@ -1,3 +1,5 @@
+#![no_std]
+
 //! AHCI (Advanced Host Controller Interface) Driver
 //!
 //! This module provides a complete AHCI driver implementation that supports:
@@ -41,8 +43,8 @@ use alloc::{vec, vec::Vec, sync::Arc, boxed::Box};
 use spin::{Mutex, RwLock};
 use x86_64::{PhysAddr, VirtAddr};
 use core::ptr::{read_volatile, write_volatile};
-use crate::kprintln;
-use crate::memory::dma::{DmaBuffer, BufferId};
+use lib_kernel::kprintln;
+use lib_kernel::memory::dma::{DmaBuffer, BufferId};
 use ez_pci::{PciAccess, PciFunction, BarWithSize};
 
 /// Global AHCI driver instance

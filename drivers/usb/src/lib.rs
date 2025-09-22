@@ -1,6 +1,8 @@
+#![no_std]
+
 mod consts;
 use consts::*;
-use crate::api::commands::{inb, outb};
+use lib_kernel::api::commands::{inb, outb};
 
 pub fn init_xhci() {
     // reset XHCI controller

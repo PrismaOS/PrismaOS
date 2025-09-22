@@ -1,7 +1,9 @@
 // TODO: As much of this as possible should be moved to a safe Rust implementation.
+#![no_std]
 
-use alloc::format;
-use crate::api::commands::{inb, outb, insw, outsw};
+extern crate alloc;
+
+use lib_kernel::api::commands::{inb, outb, insw, outsw};
 
 pub mod consts;
 pub mod types;

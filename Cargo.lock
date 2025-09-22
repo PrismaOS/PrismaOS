@@ -54,8 +54,8 @@ dependencies = [
  "hashbrown 0.14.5",
  "heapless 0.7.17",
  "ids_rs",
- "kernel",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
@@ -264,6 +264,7 @@ dependencies = [
  "heapless 0.7.17",
  "ids_rs",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
@@ -340,6 +341,10 @@ dependencies = [
 [[package]]
 name = "galleon2"
 version = "0.1.0"
+dependencies = [
+ "ide",
+ "lib_kernel",
+]
 
 [[package]]
 name = "galleonfs"
@@ -433,27 +438,7 @@ dependencies = [
 name = "ide"
 version = "0.1.0"
 dependencies = [
- "acpi",
- "conquer-once",
- "crossbeam-queue",
- "ez_pci",
- "futures",
- "futures-util",
- "galleonfs",
- "hashbrown 0.14.5",
- "heapless 0.7.17",
- "ids_rs",
- "lazy_static",
- "limine",
- "linked_list_allocator",
- "luminal_rt",
- "pc-keyboard",
- "pic8259",
- "serde",
- "spin",
- "uart_16550",
- "volatile 0.4.6",
- "x86_64 0.15.2",
+ "lib_kernel",
 ]
 
 [[package]]
@@ -480,6 +465,7 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "acpi",
+ "ahci",
  "conquer-once",
  "crossbeam-queue",
  "ez_pci",
@@ -490,10 +476,12 @@ dependencies = [
  "heapless 0.7.17",
  "ids_rs",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
  "pc-keyboard",
+ "pci",
  "pic8259",
  "serde",
  "spin",
@@ -509,6 +497,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin",
+]
+
+[[package]]
+name = "lib_kernel"
+version = "0.1.0"
+dependencies = [
+ "acpi",
+ "conquer-once",
+ "crossbeam-queue",
+ "ez_pci",
+ "futures",
+ "futures-util",
+ "hashbrown 0.14.5",
+ "heapless 0.7.17",
+ "ids_rs",
+ "lazy_static",
+ "limine",
+ "linked_list_allocator",
+ "luminal_rt",
+ "pc-keyboard",
+ "pic8259",
+ "serde",
+ "spin",
+ "uart_16550",
+ "volatile 0.4.6",
+ "x86_64 0.15.2",
 ]
 
 [[package]]
@@ -675,6 +689,7 @@ dependencies = [
  "heapless 0.7.17",
  "ids_rs",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
@@ -733,6 +748,7 @@ dependencies = [
  "ids_rs",
  "kernel",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
@@ -908,6 +924,7 @@ dependencies = [
  "heapless 0.7.17",
  "ids_rs",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
@@ -974,6 +991,7 @@ dependencies = [
  "heapless 0.7.17",
  "ids_rs",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",
@@ -1049,6 +1067,7 @@ dependencies = [
  "heapless 0.7.17",
  "ids_rs",
  "lazy_static",
+ "lib_kernel",
  "limine",
  "linked_list_allocator",
  "luminal_rt",

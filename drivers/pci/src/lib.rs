@@ -1,4 +1,8 @@
-use crate::kprintln;
+#![no_std]
+
+extern crate alloc;
+
+use lib_kernel::kprintln;
 use alloc::string::{String, ToString};
 use ez_pci::PciAccess;
 use ids_rs::{parser::VendorBuilder, DeviceId, PciDatabase, VendorId};

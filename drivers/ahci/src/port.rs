@@ -9,7 +9,7 @@ use spin::Mutex;
 use core::ptr::{read_volatile, write_volatile};
 use core::mem;
 use x86_64::{PhysAddr, VirtAddr};
-use crate::memory::dma::{DmaBuffer, BufferId};
+use lib_kernel::memory::dma::{DmaBuffer, BufferId};
 use super::{AhciError, AhciResult, consts::*, device::*, command::*};
 use super::AhciHba;
 

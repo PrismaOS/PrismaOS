@@ -1,5 +1,10 @@
+#![no_std]
+
+#[allow(dead_code)]
+
 use core::fmt::{self, Write};
 use core::arch::asm;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 const PORT: u16 = 0x3F8; // COM1
 
@@ -76,11 +81,32 @@ impl Write for SerialPort {
     }
 }
 
-// Global serial port instance
-pub static mut SERIAL: SerialPort = SerialPort::new(PORT);
+// Option 1: Using static with atomic initialization flag (Recommended)
+static SERIAL: SerialPort = SerialPort::new(PORT);
+static SERIAL_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 pub fn init_serial() -> Result<(), ()> {
-    unsafe { SERIAL.init() }
+    let result = SERIAL.init();
+    if result.is_ok() {
+        SERIAL_INITIALIZED.store(true, Ordering::Release);
+    }
+    result
+}
+
+fn ensure_serial_init() {
+    if !SERIAL_INITIALIZED.load(Ordering::Acquire) {
+        // In kernel context, you might want to panic or handle this differently
+        init_serial().expect("Failed to initialize serial port");
+    }
+}
+
+// Helper function to safely access serial port
+fn with_serial<F, R>(f: F) -> R
+where
+    F: FnOnce(&SerialPort) -> R,
+{
+    ensure_serial_init();
+    f(&SERIAL)
 }
 
 // Custom writer that implements formatting
@@ -88,16 +114,16 @@ struct SerialWriter;
 
 impl Write for SerialWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        unsafe { SERIAL.write_str(s) };
+        with_serial(|serial| serial.write_str(s));
         Ok(())
     }
 }
 
-// Main printf macro
+// Main printf macro - now safer
 #[macro_export]
 macro_rules! serial_printf {
     ($fmt:expr) => {
-        unsafe { $crate::SERIAL.write_str($fmt) }
+        $crate::with_serial(|serial| serial.write_str($fmt))
     };
     ($fmt:expr, $($arg:expr),*) => {{
         use core::fmt::Write;
@@ -117,11 +143,11 @@ macro_rules! serial_print {
 #[macro_export]
 macro_rules! serial_println {
     () => {
-        $crate::serial_printf!("\n");
+        $crate::with_serial(|serial| serial.write_str("\n"));
     };
     ($($arg:tt)*) => {{
         $crate::serial_printf!($($arg)*);
-        $crate::serial_printf!("\n");
+        $crate::with_serial(|serial| serial.write_str("\n"));
     }};
 }
 
@@ -149,7 +175,9 @@ impl<const N: usize> FixedBuffer<N> {
 
     pub fn clear(&mut self) {
         self.pos = 0;
-        self.buf[0] = 0;
+        if self.buf.len() > 0 {
+            self.buf[0] = 0;
+        }
     }
 }
 
@@ -192,15 +220,12 @@ macro_rules! ksnprintf {
 
 // Public helper functions for backwards compatibility
 pub fn write_serial_char(ch: char) {
-    unsafe { SERIAL.write_char(ch as u8) };
+    with_serial(|serial| serial.write_char(ch as u8));
 }
 
 pub fn write_serial(s: &str) {
-    unsafe { SERIAL.write_str(s) };
+    with_serial(|serial| serial.write_str(s));
 }
-
-// Make the SerialWriter public for the macros
-pub use SerialWriter;
 
 #[cfg(test)]
 mod tests {
@@ -216,11 +241,19 @@ mod tests {
         assert_eq!(len, 13);
         
         // Test number formatting
-        let len = ksnprintf!(buf, "Number: {}", 42);
+        let _len = ksnprintf!(buf, "Number: {}", 42);
         assert_eq!(buf.as_str(), "Number: 42");
         
         // Test hex formatting
-        let len = ksnprintf!(buf, "Hex: 0x{:x}", 255);
+        let _len = ksnprintf!(buf, "Hex: 0x{:x}", 255);
         assert_eq!(buf.as_str(), "Hex: 0xff");
+    }
+
+    #[test]
+    fn test_serial_operations() {
+        // These tests would need to be run in an environment with actual serial hardware
+        // or mocked I/O operations
+        write_serial("Test message\n");
+        write_serial_char('X');
     }
 }

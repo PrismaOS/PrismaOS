@@ -1,7 +1,9 @@
+#![no_std]
+
 use core::any::Any;
 use spin::Mutex;
 
-use super::{Driver, DriverError};
+use lib_kernel::drivers::{Driver, DriverError};
 
 pub struct FramebufferDriver {
     base_addr: Option<*mut u8>,
@@ -33,7 +35,7 @@ impl FramebufferDriver {
         self.bytes_per_pixel = (framebuffer.bpp() as u32 + 7) / 8;
         self.initialized = true;
 
-        crate::println!("Framebuffer initialized: {}x{} @ {:p}", 
+        lib_kernel::println!("Framebuffer initialized: {}x{} @ {:p}", 
                        self.width, self.height, self.base_addr.unwrap());
         
         // Clear framebuffer to black

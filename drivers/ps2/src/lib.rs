@@ -1,8 +1,9 @@
+#![no_std]
 #![allow(dead_code)]
 
 use core::any::Any;
-use super::{Driver, DriverError};
-use crate::api::commands::{inb, outb};
+use lib_kernel::drivers::{Driver, DriverError};
+use lib_kernel::api::commands::{inb, outb};
 
 // PS/2 Keyboard constants
 const KB_DATA_PORT: u16 = 0x60;
@@ -178,16 +179,16 @@ impl KeyboardDriver {
         // Handle special keys
         match key {
             KEY_BACKSPACE => {
-                crate::print!("\x08 \x08"); // Backspace, space, backspace
+                lib_kernel::print!("\x08 \x08"); // Backspace, space, backspace
             }
             KEY_ENTER => {
-                crate::print!("\n");
+                lib_kernel::print!("\n");
             }
             KEY_TAB => {
-                crate::print!("    "); // 4 spaces for tab
+                lib_kernel::print!("    "); // 4 spaces for tab
             }
             KEY_ESC => {
-                crate::print!("[ESC]");
+                lib_kernel::print!("[ESC]");
             }
             _ => {
                 // Handle printable characters
@@ -196,13 +197,13 @@ impl KeyboardDriver {
                         if self.modifiers.ctrl {
                             // Handle Ctrl+key combinations
                             match c.to_ascii_lowercase() {
-                                'l' => crate::print!("[Ctrl+L]"), // Clear screen
-                                'c' => crate::print!("[Ctrl+C]"), // Cancel
-                                'd' => crate::print!("[Ctrl+D]"), // EOF
+                                'l' => lib_kernel::print!("[Ctrl+L]"), // Clear screen
+                                'c' => lib_kernel::print!("[Ctrl+C]"), // Cancel
+                                'd' => lib_kernel::print!("[Ctrl+D]"), // EOF
                                 _ => {}
                             }
                         } else {
-                            crate::print!("{}", c);
+                            lib_kernel::print!("{}", c);
                         }
                     }
                 }
@@ -255,7 +256,7 @@ impl KeyboardDriver {
                 self.handle_key_press(key);
                 
                 // Also add to the executor's scancode queue for async processing
-                crate::executor::keyboard::add_scancode(scancode_raw);
+                lib_kernel::executor::keyboard::add_scancode(scancode_raw);
             } else {
                 self.handle_key_release(key);
             }
@@ -274,7 +275,7 @@ impl Driver for KeyboardDriver {
     fn init(&mut self) -> Result<(), DriverError> {
         self.init_keyboard()?;
         self.initialized = true;
-        crate::println!("PS/2 Keyboard driver initialized");
+        lib_kernel::println!("PS/2 Keyboard driver initialized");
         Ok(())
     }
 
@@ -286,7 +287,7 @@ impl Driver for KeyboardDriver {
         }
         self.initialized = false;
         self.modifiers = ModifierState::default();
-        crate::println!("PS/2 Keyboard driver shutdown");
+        lib_kernel::println!("PS/2 Keyboard driver shutdown");
         Ok(())
     }
 
@@ -350,5 +351,5 @@ pub fn keyboard_interface() -> &'static spin::Mutex<KeyboardInterface> {
 
 /// Initialize keyboard subsystem
 pub fn init_keyboard_subsystem() {
-    crate::println!("Keyboard subsystem initialized");
+    lib_kernel::println!("Keyboard subsystem initialized");
 }

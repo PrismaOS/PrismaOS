@@ -6,9 +6,8 @@
 /// 3. Sets up syscall handling
 /// 4. Switches to userspace and runs the program
 
-use crate::{
-    kprintln,
-};
+use lib_kernel::{kprintln, syscall, api};
+
 
 /// Test userspace execution with a simple "Hello World" program
 /// 
@@ -31,7 +30,7 @@ pub fn test_userspace_execution() {
     
     kprintln!("   Creating mock process for demonstration...");
     
-    let mock_process_id = crate::api::ProcessId::new();
+    let mock_process_id = api::ProcessId::new();
     kprintln!("   Mock process created with ID: {}", mock_process_id.as_u64());
     
     kprintln!("   Process ready for execution");
@@ -59,32 +58,32 @@ fn simulate_userspace_execution() {
     
     // 1. Create a surface (syscall 0)
     kprintln!("   📞 Syscall: CreateObject(Surface, 400, 300, 0)");
-    let surface_result = crate::syscall::test_syscall(0, 0, 400, 300, 0, 0);
+    let surface_result = syscall::test_syscall(0, 0, 400, 300, 0, 0);
     kprintln!("      → Surface handle: {:#x}", surface_result);
     
     // 2. Create a buffer (syscall 0)
     kprintln!("   📞 Syscall: CreateObject(Buffer, 400, 300, 0)");  
-    let buffer_result = crate::syscall::test_syscall(0, 1, 400, 300, 0, 0);
+    let buffer_result = syscall::test_syscall(0, 1, 400, 300, 0, 0);
     kprintln!("      → Buffer handle: {:#x}", buffer_result);
     
     // 3. Attach buffer to surface (syscall 2)
     kprintln!("   📞 Syscall: CallObject(Surface.attach_buffer, {:#x})", buffer_result);
-    let attach_result = crate::syscall::test_syscall(2, surface_result, 0, buffer_result, 0, 0);
+    let attach_result = syscall::test_syscall(2, surface_result, 0, buffer_result, 0, 0);
     kprintln!("      → Result: {}", attach_result);
     
     // 4. Commit surface (syscall 2) 
     kprintln!("   📞 Syscall: CallObject(Surface.commit)");
-    let commit_result = crate::syscall::test_syscall(2, surface_result, 1, 0, 0, 0);
+    let commit_result = syscall::test_syscall(2, surface_result, 1, 0, 0, 0);
     kprintln!("      → Result: {}", commit_result);
     
     // 5. Create event stream (syscall 0)
     kprintln!("   📞 Syscall: CreateObject(EventStream)");
-    let event_result = crate::syscall::test_syscall(0, 2, 0, 0, 0, 0);
+    let event_result = syscall::test_syscall(0, 2, 0, 0, 0, 0);
     kprintln!("      → EventStream handle: {:#x}", event_result);
     
     // 6. Check for events (syscall 2)
     kprintln!("   📞 Syscall: CallObject(EventStream.has_events)");
-    let has_events = crate::syscall::test_syscall(2, event_result, 0, 0, 0, 0);
+    let has_events = syscall::test_syscall(2, event_result, 0, 0, 0, 0);
     kprintln!("      → Has events: {}", has_events);
     
     // 7. Exit with success (syscall 99)

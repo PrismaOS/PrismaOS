@@ -1,4 +1,6 @@
-use crate::api::commands::{inb, outb};
+#![no_std]
+
+use lib_kernel::api::commands::{inb, outb};
 
 pub fn play_sound(freq: u8) {
     let div: u32 = 1193180 / (freq as u32);

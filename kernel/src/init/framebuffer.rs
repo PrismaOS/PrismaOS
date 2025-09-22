@@ -4,9 +4,9 @@
 //! initializing both a global renderer (for macros) and an explicit
 //! `ScrollingTextRenderer` returned to the caller for direct use.
 
-use crate::font::{PsfFont, FONT_PSF};
-use crate::scrolling_text::{init_global_renderer, ScrollingTextRenderer};
-use crate::utils;
+use lib_kernel::font::{PsfFont, FONT_PSF};
+use lib_kernel::scrolling_text::{init_global_renderer, ScrollingTextRenderer};
+use lib_kernel::utils;
 use alloc::format;
 
 // Keep a single font instance alive for the global renderer needing a

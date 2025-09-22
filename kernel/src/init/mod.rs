@@ -16,6 +16,7 @@ pub use core::init_core_subsystems;
 pub use memory::init_memory_and_heap;
 pub use subsystems::init_higher_level_subsystems;
 pub use userspace::launch_userspace_components;
+pub use lib_kernel::kprintln;
 
 /// Top-level orchestration function.
 ///
@@ -33,15 +34,15 @@ pub fn init_kernel() -> Result<(), &'static str> {
             init_higher_level_subsystems();
             launch_userspace_components();
 
-            crate::kprintln!("");
-            crate::kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
-            crate::kprintln!("All systems operational");
-            crate::kprintln!("");
-            crate::kprintln!("=== Entering idle state ===");
+            kprintln!("");
+            kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
+            kprintln!("All systems operational");
+            kprintln!("");
+            kprintln!("=== Entering idle state ===");
             Ok(())
         }
         Ok(None) => {
-            crate::kprintln!("Initializing kernel subsystems...");
+            kprintln!("Initializing kernel subsystems...");
             init_core_subsystems();
 
             unreachable!("CPU should have halted after framebuffer initialization failure");
@@ -50,11 +51,11 @@ pub fn init_kernel() -> Result<(), &'static str> {
             init_higher_level_subsystems();
             launch_userspace_components();
 
-            crate::kprintln!("");
-            crate::kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
-            crate::kprintln!("All systems operational");
-            crate::kprintln!("");
-            crate::kprintln!("=== Entering idle state ===");
+            kprintln!("");
+            kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
+            kprintln!("All systems operational");
+            kprintln!("");
+            kprintln!("=== Entering idle state ===");
             Ok(())
         }
         Err(e) => Err(e),

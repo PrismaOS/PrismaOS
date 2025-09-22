@@ -1,5 +1,7 @@
+#![no_std]
+
 use core::any::Any;
-use super::{Driver, DriverError};
+use lib_kernel::drivers::{Driver, DriverError};
 
 pub struct TimerDriver {
     initialized: bool,

@@ -6,7 +6,7 @@
 
 extern crate alloc;
 use alloc::{vec::Vec, sync::Arc};
-use crate::memory::dma::{DmaBuffer, BufferId};
+use lib_kernel::memory::dma::{DmaBuffer, BufferId};
 use super::{AhciError, AhciResult, consts::*};
 /// ATA command representation
 ///
@@ -414,7 +414,7 @@ impl CommandQueue {
 
         let active_cmd = ActiveCommand {
             command,
-            start_time: crate::time::get_timestamp(),
+            start_time: lib_kernel::time::get_timestamp(),
             callback: None,
         };
 
