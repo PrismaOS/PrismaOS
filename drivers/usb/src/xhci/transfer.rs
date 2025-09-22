@@ -6,12 +6,12 @@
 /// - Interrupt transfers (periodic data)
 /// - Isochronous transfers (time-critical data)
 
-use super::trb::{Trb, TrbType, SetupStageTrb, DataStageTrb, StatusStageTrb, NormalTrb, EventDataTrb};
+use super::trb::{Trb, TrbType, SetupStageTrb, DataStageTrb, StatusStageTrb, NormalTrb};
 use super::ring::TransferRing;
 use super::context::EndpointContext;
 use crate::error::{UsbError, Result};
 use crate::types::{UsbDirection, UsbSpeed, UsbEndpoint, UsbRequest};
-use alloc::{vec::Vec, boxed::Box};
+use alloc::{vec::Vec, boxed::Box, vec};
 use core::mem;
 
 /// USB Transfer Request
@@ -29,8 +29,7 @@ pub struct UsbTransferRequest {
     pub data: Vec<u8>,
     /// Setup packet for control transfers
     pub setup_packet: Option<UsbRequest>,
-    /// Completion callback
-    pub completion_callback: Option<Box<dyn FnOnce(Result<Vec<u8>>) + Send>>,
+    /// Completion callback (removed for now to ensure Send + Sync)
     /// Transfer ID for tracking
     pub transfer_id: u32,
 }
@@ -131,7 +130,6 @@ impl UsbTransferManager {
             transfer_type: UsbTransferType::Control,
             data: data.clone(),
             setup_packet: Some(setup_packet),
-            completion_callback: None,
             transfer_id,
         };
 
@@ -173,7 +171,6 @@ impl UsbTransferManager {
             transfer_type: UsbTransferType::Bulk,
             data: data.clone(),
             setup_packet: None,
-            completion_callback: None,
             transfer_id,
         };
 
@@ -216,7 +213,6 @@ impl UsbTransferManager {
             transfer_type: UsbTransferType::Interrupt,
             data: data.clone(),
             setup_packet: None,
-            completion_callback: None,
             transfer_id,
         };
 
@@ -259,7 +255,6 @@ impl UsbTransferManager {
             transfer_type: UsbTransferType::Isochronous,
             data: data.clone(),
             setup_packet: None,
-            completion_callback: None,
             transfer_id,
         };
 
@@ -290,20 +285,7 @@ impl UsbTransferManager {
             transfer.result_data = result.data;
             transfer.actual_length = result.actual_length;
 
-            // Execute completion callback if present
-            if let Some(callback) = transfer.request.completion_callback.take() {
-                match result.status {
-                    UsbTransferStatus::Completed => {
-                        callback(Ok(transfer.result_data.clone()));
-                    }
-                    UsbTransferStatus::Failed => {
-                        callback(Err(result.error.unwrap_or(UsbError::TransferFailed)));
-                    }
-                    _ => {
-                        callback(Err(UsbError::TransferFailed));
-                    }
-                }
-            }
+            // Completion callback removed for Send + Sync compatibility
 
             Ok(())
         } else {
@@ -365,12 +347,9 @@ impl UsbTransferManager {
 
         // Setup Stage TRB
         let setup_trb = SetupStageTrb::new(
-            setup_packet.request_type,
-            setup_packet.request,
-            setup_packet.value,
-            setup_packet.index,
-            request.data.len() as u16,
-            request.direction == UsbDirection::In,
+            setup_packet,
+            request.data.len() as u32,
+            true, // cycle bit will be set later
         );
         trbs.push(setup_trb);
 
@@ -380,7 +359,8 @@ impl UsbTransferManager {
             let data_trb = DataStageTrb::new(
                 data_buffer_addr,
                 request.data.len() as u32,
-                request.direction == UsbDirection::In,
+                request.direction,
+                true, // cycle bit will be set later
             );
             trbs.push(data_trb);
         }
@@ -395,7 +375,7 @@ impl UsbTransferManager {
             }
         };
 
-        let status_trb = StatusStageTrb::new(status_direction == UsbDirection::In);
+        let status_trb = StatusStageTrb::new(status_direction, true);
         trbs.push(status_trb);
 
         Ok(trbs)
@@ -422,6 +402,7 @@ impl UsbTransferManager {
             let normal_trb = NormalTrb::new(
                 data_buffer_addr,
                 chunk_size as u32,
+                true, // cycle bit will be set later
                 remaining_data == chunk_size, // Interrupt on completion for last TRB
             );
 
@@ -444,6 +425,7 @@ impl UsbTransferManager {
             let normal_trb = NormalTrb::new(
                 data_buffer_addr,
                 request.data.len() as u32,
+                true, // cycle bit will be set later
                 true, // Always interrupt on completion for interrupt transfers
             );
             trbs.push(normal_trb);
@@ -464,6 +446,7 @@ impl UsbTransferManager {
             let isoch_trb = NormalTrb::new(
                 data_buffer_addr,
                 request.data.len() as u32,
+                true, // cycle bit will be set later
                 true, // Interrupt on completion
             );
             trbs.push(isoch_trb);
@@ -556,7 +539,6 @@ impl ControlTransfer {
             transfer_type: UsbTransferType::Control,
             data: vec![0; length as usize],
             setup_packet: Some(setup_packet),
-            completion_callback: None,
             transfer_id: 0, // Will be set by transfer manager
         }
     }
@@ -578,7 +560,6 @@ impl ControlTransfer {
             transfer_type: UsbTransferType::Control,
             data: Vec::new(),
             setup_packet: Some(setup_packet),
-            completion_callback: None,
             transfer_id: 0, // Will be set by transfer manager
         }
     }
@@ -600,7 +581,6 @@ impl ControlTransfer {
             transfer_type: UsbTransferType::Control,
             data: Vec::new(),
             setup_packet: Some(setup_packet),
-            completion_callback: None,
             transfer_id: 0, // Will be set by transfer manager
         }
     }

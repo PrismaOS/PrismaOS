@@ -4,6 +4,7 @@
 /// to maintain state information for USB devices and endpoints.
 
 use crate::types::*;
+use crate::error::{UsbError, Result};
 use core::mem;
 
 /// Slot Context (32 bytes)
@@ -355,7 +356,7 @@ impl DeviceContext {
     }
 
     /// Add an endpoint to the device context
-    pub fn add_endpoint(&mut self, endpoint: &UsbEndpoint, ring_address: u64) -> Result<(), UsbError> {
+    pub fn add_endpoint(&mut self, endpoint: &UsbEndpoint, ring_address: u64) -> Result<()> {
         let endpoint_index = endpoint.xhci_index();
         if endpoint_index == 0 || endpoint_index > 31 {
             return Err(UsbError::InvalidEndpoint);

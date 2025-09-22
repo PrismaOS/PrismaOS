@@ -214,7 +214,8 @@ impl UsbDevice {
 
     /// Add an endpoint to the device
     pub fn add_endpoint(&mut self, endpoint: UsbEndpoint) -> Result<(), ()> {
-        self.endpoints.push(endpoint)
+        self.endpoints.push(endpoint);
+        Ok(())
     }
 }
 
@@ -354,7 +355,7 @@ impl EndpointDescriptor {
     }
 }
 
-/// USB setup packet for control transfers
+/// USB setup packet for control transfers (USB 2.0 spec section 9.3)
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct SetupPacket {
@@ -415,6 +416,9 @@ impl SetupPacket {
         }
     }
 }
+
+/// Type alias for SetupPacket to match common USB nomenclature
+pub type UsbRequest = SetupPacket;
 
 /// USB descriptor types
 #[allow(dead_code)]

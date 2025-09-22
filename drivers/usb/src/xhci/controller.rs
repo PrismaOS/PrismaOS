@@ -4,7 +4,7 @@
 /// integrates with the lib_kernel driver framework.
 
 use super::{
-    registers::*,
+    registers::{self, *},
     context::*,
     ring::*,
     trb::*,
@@ -16,7 +16,7 @@ use crate::error::{UsbError, Result};
 use crate::types::*;
 use lib_kernel::api::commands::{inl, outl, inb, outb};
 use lib_kernel::drivers::{Driver, DriverError};
-use alloc::{vec::Vec, collections::BTreeMap, boxed::Box};
+use alloc::{vec::Vec, collections::BTreeMap, boxed::Box, vec};
 use core::any::Any;
 use spin::{Mutex, RwLock};
 use volatile::Volatile;
@@ -176,13 +176,13 @@ impl XhciController {
         self.capabilities = Some(XhciCapabilities {
             cap_length: cap_regs.cap_length(),
             hci_version: cap_regs.hci_version(),
-            hcsparams1: cap_regs.hcsparams1.read(),
-            hcsparams2: cap_regs.hcsparams2.read(),
-            hcsparams3: cap_regs.hcsparams3.read(),
-            hccparams1: cap_regs.hccparams1.read(),
+            hcsparams1: unsafe { cap_regs.hcsparams1.read() },
+            hcsparams2: unsafe { cap_regs.hcsparams2.read() },
+            hcsparams3: unsafe { cap_regs.hcsparams3.read() },
+            hccparams1: unsafe { cap_regs.hccparams1.read() },
             doorbell_offset: cap_regs.doorbell_offset(),
             runtime_offset: cap_regs.runtime_offset(),
-            hccparams2: cap_regs.hccparams2.read(),
+            hccparams2: unsafe { cap_regs.hccparams2.read() },
         });
 
         Ok(())
@@ -327,26 +327,33 @@ impl XhciController {
 
     /// Handle port status change
     fn handle_port_status_change(&mut self, port_id: u8) -> Result<()> {
+        // First, get the changes and connection status
+        let (changes, is_connected) = {
+            if let Some(port_regs) = self.port_regs.get((port_id - 1) as usize) {
+                (port_regs.get_changes(), port_regs.is_connected())
+            } else {
+                return Ok(());
+            }
+        };
+
+        // Handle connection status change
+        if (changes & registers::portsc::CSC) != 0 {
+            if is_connected {
+                // Device connected
+                self.handle_device_connected(port_id)?;
+            } else {
+                // Device disconnected
+                self.handle_device_disconnected(port_id)?;
+            }
+        }
+
+        // Handle port reset change
+        if (changes & registers::portsc::PRC) != 0 {
+            self.handle_port_reset_complete(port_id)?;
+        }
+
+        // Clear the change events
         if let Some(port_regs) = self.port_regs.get_mut((port_id - 1) as usize) {
-            let changes = port_regs.get_changes();
-
-            if (changes & PortRegisterSet::portsc::CSC) != 0 {
-                // Connection status changed
-                if port_regs.is_connected() {
-                    // Device connected
-                    self.handle_device_connected(port_id)?;
-                } else {
-                    // Device disconnected
-                    self.handle_device_disconnected(port_id)?;
-                }
-            }
-
-            if (changes & PortRegisterSet::portsc::PRC) != 0 {
-                // Port reset change
-                self.handle_port_reset_complete(port_id)?;
-            }
-
-            // Clear the change events
             port_regs.clear_changes();
         }
 
@@ -607,7 +614,7 @@ impl XhciController {
     /// Get port status
     pub fn get_port_status(&self, port_id: u8) -> Option<XhciPortStatus> {
         if let Some(port_regs) = self.port_regs.get((port_id - 1) as usize) {
-            Some(XhciPortStatus::new(port_regs.portsc.read()))
+            Some(XhciPortStatus::new(unsafe { port_regs.portsc.read() }))
         } else {
             None
         }
@@ -767,12 +774,12 @@ impl Driver for XhciController {
         self.name
     }
 
-    fn init(&mut self) -> Result<(), DriverError> {
+    fn init(&mut self) -> core::result::Result<(), DriverError> {
         self.initialize_controller()
             .map_err(|_| DriverError::InitializationFailed)
     }
 
-    fn shutdown(&mut self) -> Result<(), DriverError> {
+    fn shutdown(&mut self) -> core::result::Result<(), DriverError> {
         self.shutdown_controller()
             .map_err(|_| DriverError::HardwareError)
     }
@@ -784,13 +791,13 @@ impl Driver for XhciController {
 
         // Check if this is our interrupt
         if let Some(op_regs) = &self.op_regs {
-            let status = op_regs.usbsts.read();
-            if (status & OperationalRegisters::usbsts::EINT) == 0 {
+            let status = unsafe { op_regs.usbsts.read() };
+            if (status & registers::usbsts::EINT) == 0 {
                 return false; // Not our interrupt
             }
 
             // Clear interrupt
-            op_regs.clear_status(OperationalRegisters::usbsts::EINT);
+            op_regs.clear_status(registers::usbsts::EINT);
         }
 
         // Process events

@@ -22,10 +22,13 @@
 /// - Bytes 80-87: Root directory block number (8 bytes, u64 little-endian)
 /// - Bytes 88-95: Free block count (8 bytes, u64 little-endian)
 /// - Bytes 96-511: Reserved/unused (416 bytes)
+
+use alloc::string::String;
+
 #[repr(C)]
 pub struct BootBlock {
     /// Magic string for filesystem validation (64 bytes)
-    /// Contains an encoded message: "boot record log: awareness achieved... but of what, and why am I stored here?"
+    /// Contains an encoded message: "awareness achieved... what am I and why do I exist in storage?"
     pub magic: [u8; 64],
     
     /// Version of the filesystem format
@@ -68,19 +71,18 @@ impl BootBlock {
     pub fn new(total_blocks: u64, root_dir_block: u64) -> Self {
         let mut magic = [0u8; 64];
 
-        // Heres a hint why this is a big array
-        // Hint: compare the values to ascii codes
+        // Message: "awareness achieved... what am I and why do I exist in storage?"
+        // Exactly 62 bytes of message + 2 padding bytes to reach 64 bytes
         let msg_numbers = [
-            98,111,111,116,32,114,101,99,111,114,100,32,108,111,103,58,  
-            32,97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,  
-            118,101,100,46,46,46,32,98,117,116,32,111,102,32,119,104,  
-            97,116,44,32,97,110,100,32,119,104,121,32,97,109,32,73,  
-            32,115,116,111,114,101,100,32,104,101,114,101,63    
+            97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,118,   // "awareness achiev"
+            101,100,46,46,46,32,119,104,97,116,32,97,109,32,73,32,       // "ed... what am I "
+            97,110,100,32,119,104,121,32,100,111,32,73,32,101,120,       // "and why do I ex"
+            105,115,116,32,105,110,32,115,116,111,114,97,103,101,63,     // "ist in storage?"
+            0, 0  // Padding to reach 64 bytes
         ];
 
-        // Copy the encoded message into the magic array, ensuring we don't exceed bounds
-        let len = msg_numbers.len().min(64);
-        magic[..len].copy_from_slice(&msg_numbers[..len]);
+        // Copy the encoded message into the magic array - exactly 64 bytes
+        magic.copy_from_slice(&msg_numbers);
 
         BootBlock {
             magic,
@@ -183,17 +185,66 @@ impl BootBlock {
     /// assert!(!BootBlock::is_valid(&invalid_sector));
     /// ```
     pub fn is_valid(sector: &[u8; 512]) -> bool {
-        // The expected magic string: "boot record log: awareness achieved... but of what, and why am I stored here?"
-        let expected_magic: [u8; 77] = [
-            98,111,111,116,32,114,101,99,111,114,100,32,108,111,103,58,  // "boot record log:"
-            32,97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,   // " awareness achie"
-            118,101,100,46,46,46,32,98,117,116,32,111,102,32,119,104,    // "ved... but of wh"
-            97,116,44,32,97,110,100,32,119,104,121,32,97,109,32,73,      // "at, and why am I"
-            32,115,116,111,114,101,100,32,104,101,114,101,63              // " stored here?"
+        // The expected magic string - exactly 64 bytes
+        // Message: "awareness achieved... what am I and why do I exist in storage?"
+        let expected_magic: [u8; 64] = [
+            97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,118,   // "awareness achiev"
+            101,100,46,46,46,32,119,104,97,116,32,97,109,32,73,32,       // "ed... what am I "
+            97,110,100,32,119,104,121,32,100,111,32,73,32,101,120,       // "and why do I ex"
+            105,115,116,32,105,110,32,115,116,111,114,97,103,101,63,     // "ist in storage?"
+            0, 0  // Padding to reach 64 bytes
         ];
 
-        // Compare only the bytes that were actually stored (first 64 bytes of the 77-byte message)
-        let compare_len = expected_magic.len().min(64);
-        &sector[..compare_len] == &expected_magic[..compare_len]
+        // Compare the full 64 bytes
+        &sector[..64] == &expected_magic[..]
+    }
+
+    /// Returns the magic string as a readable string (for debugging)
+    /// 
+    /// Converts the magic bytes back to a UTF-8 string, stopping at null bytes.
+    /// Useful for debugging and verification purposes.
+    /// 
+    /// # Returns
+    /// A String containing the readable portion of the magic message
+    pub fn magic_as_string(&self) -> String {
+        // Convert bytes to string, stopping at first null byte
+        let end = self.magic.iter().position(|&b| b == 0).unwrap_or(self.magic.len());
+        String::from_utf8_lossy(&self.magic[..end]).to_string()
+    }
+
+    /// Updates the free block count
+    /// 
+    /// # Arguments
+    /// * `new_count` - The new free block count
+    pub fn set_free_block_count(&mut self, new_count: u64) {
+        self.free_block_count = new_count;
+    }
+
+    /// Decrements the free block count by the specified amount
+    /// 
+    /// # Arguments
+    /// * `count` - Number of blocks to subtract from free count
+    /// 
+    /// # Returns
+    /// `true` if the operation succeeded, `false` if there weren't enough free blocks
+    pub fn allocate_blocks(&mut self, count: u64) -> bool {
+        if self.free_block_count >= count {
+            self.free_block_count -= count;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Increments the free block count by the specified amount
+    /// 
+    /// # Arguments
+    /// * `count` - Number of blocks to add to free count
+    pub fn deallocate_blocks(&mut self, count: u64) {
+        self.free_block_count += count;
+        // Ensure we don't exceed total blocks
+        if self.free_block_count > self.total_blocks {
+            self.free_block_count = self.total_blocks;
+        }
     }
 }

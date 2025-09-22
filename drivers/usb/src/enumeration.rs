@@ -5,7 +5,7 @@
 
 use crate::error::{UsbError, Result};
 use crate::types::*;
-use alloc::{vec::Vec, string::String};
+use alloc::{vec::Vec, string::String, boxed::Box};
 
 /// USB Device Manager
 pub struct UsbDeviceManager {

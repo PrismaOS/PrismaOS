@@ -4,6 +4,7 @@ members = [
     "drivers/*",
     "kernel"
 ]
+
 resolver = "2"
 
 [workspace.dependencies]

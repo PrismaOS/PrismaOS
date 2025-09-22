@@ -49,6 +49,8 @@ pub enum UsbError {
     MissedMicroFrame,
     /// Split transaction error
     SplitTransactionError,
+    /// Transfer was cancelled
+    TransferCancelled,
 }
 
 impl UsbError {
@@ -79,6 +81,7 @@ impl UsbError {
             UsbError::TransactionError => "USB transaction error",
             UsbError::MissedMicroFrame => "USB missed microframe",
             UsbError::SplitTransactionError => "USB split transaction error",
+            UsbError::TransferCancelled => "USB transfer was cancelled",
         }
     }
 }
