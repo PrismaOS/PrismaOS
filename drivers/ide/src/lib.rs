@@ -449,7 +449,7 @@ fn ide_polling(channel: u8, advanced_check: bool) -> u8 {
 /// 2. Clears the device table
 /// 3. Attempts to identify devices on all 4 possible positions
 /// 4. Prints information about detected devices
-pub fn ide_initialize() {
+pub fn ide_initialize() -> u64 {
     unsafe {
         // Disable IRQs for both IDE channels
         // We use polling mode instead of interrupt-driven I/O
@@ -474,6 +474,8 @@ pub fn ide_initialize() {
             ide_identify(channel, drive);
         }
 
+        let mut size_bytes: u64 = 0;
+
         // Print information about all detected devices
         // Note: We use indexed loops instead of iterators to avoid creating references to mutable statics
         #[allow(clippy::needless_range_loop)]
@@ -483,10 +485,14 @@ pub fn ide_initialize() {
                 let model_str = core::str::from_utf8(&IDE_DEVICES[i].model)
                     .unwrap_or("[Invalid UTF-8]")
                     .trim_end_matches(char::from(0));
-                
-                // Convert size from sectors to GB (assuming 512 bytes per sector)
-                let size_gb = IDE_DEVICES[i].size as f32 / 2_097_152.0; // 512 * 1024 * 1024 / 512 = 2,097,152 sectors per GB
+
+                // Convert size from sectors to GB
+                let size_gb = IDE_DEVICES[i].size as f32 / 2_097_152.0;
+            
+                // Convert size from sectors to bytes
+                size_bytes = IDE_DEVICES[i].size as u64 * 512;
             }
         }
+        return size_bytes;
     }
 }

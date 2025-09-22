@@ -1,90 +1,82 @@
-/// USB driver error types
+//! USB Driver Error Types
+
+use core::fmt;
+use usb_device::UsbError;
+
+/// USB Driver Error Types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UsbError {
-    /// Hardware not found or inaccessible
-    HardwareNotFound,
-    /// Invalid controller type
-    InvalidController,
-    /// Controller initialization failed
-    InitializationFailed,
+pub enum UsbDriverError {
     /// Device enumeration failed
     EnumerationFailed,
+    /// Invalid device configuration
+    InvalidConfiguration,
     /// Transfer timeout
     TransferTimeout,
     /// Transfer failed
     TransferFailed,
     /// Device not found
     DeviceNotFound,
-    /// Invalid endpoint
-    InvalidEndpoint,
-    /// Invalid descriptor
-    InvalidDescriptor,
-    /// Buffer too small
-    BufferTooSmall,
-    /// Invalid request
-    InvalidRequest,
-    /// Not supported
-    NotSupported,
-    /// Power management error
-    PowerError,
+    /// Endpoint error
+    EndpointError,
     /// Hub error
     HubError,
+    /// Controller error
+    ControllerError,
     /// Memory allocation error
-    OutOfMemory,
-    /// Generic hardware error
-    HardwareError,
-    /// Controller halted
-    ControllerHalted,
+    MemoryError,
+    /// Invalid parameter
+    InvalidParameter,
+    /// Operation not supported
+    NotSupported,
     /// Device disconnected
     DeviceDisconnected,
-    /// Stall condition
-    Stall,
-    /// Babble condition
-    Babble,
-    /// Data buffer error
-    DataBuffer,
-    /// Transaction error
-    TransactionError,
-    /// Missing acknowledge
-    MissedMicroFrame,
-    /// Split transaction error
-    SplitTransactionError,
-    /// Transfer was cancelled
-    TransferCancelled,
+    /// Bus error
+    BusError,
+    /// Protocol error
+    ProtocolError,
+    /// Timeout
+    Timeout,
+    /// Buffer overflow
+    BufferOverflow,
+    /// Underlying USB error
+    UsbError(UsbError),
+    /// xHCI specific error
+    XhciError(&'static str),
+    /// Power management error
+    PowerError,
+    /// Initialization error
+    InitializationError,
 }
 
-impl UsbError {
-    /// Get a human-readable description of the error
-    pub fn description(self) -> &'static str {
+impl fmt::Display for UsbDriverError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UsbError::HardwareNotFound => "USB hardware not found or inaccessible",
-            UsbError::InvalidController => "Invalid USB controller type",
-            UsbError::InitializationFailed => "USB controller initialization failed",
-            UsbError::EnumerationFailed => "USB device enumeration failed",
-            UsbError::TransferTimeout => "USB transfer timeout",
-            UsbError::TransferFailed => "USB transfer failed",
-            UsbError::DeviceNotFound => "USB device not found",
-            UsbError::InvalidEndpoint => "Invalid USB endpoint",
-            UsbError::InvalidDescriptor => "Invalid USB descriptor",
-            UsbError::BufferTooSmall => "Buffer too small for USB operation",
-            UsbError::InvalidRequest => "Invalid USB request",
-            UsbError::NotSupported => "USB operation not supported",
-            UsbError::PowerError => "USB power management error",
-            UsbError::HubError => "USB hub error",
-            UsbError::OutOfMemory => "USB memory allocation error",
-            UsbError::HardwareError => "USB hardware error",
-            UsbError::ControllerHalted => "USB controller halted",
-            UsbError::DeviceDisconnected => "USB device disconnected",
-            UsbError::Stall => "USB endpoint stall condition",
-            UsbError::Babble => "USB babble condition",
-            UsbError::DataBuffer => "USB data buffer error",
-            UsbError::TransactionError => "USB transaction error",
-            UsbError::MissedMicroFrame => "USB missed microframe",
-            UsbError::SplitTransactionError => "USB split transaction error",
-            UsbError::TransferCancelled => "USB transfer was cancelled",
+            UsbDriverError::EnumerationFailed => write!(f, "Device enumeration failed"),
+            UsbDriverError::InvalidConfiguration => write!(f, "Invalid device configuration"),
+            UsbDriverError::TransferTimeout => write!(f, "Transfer timeout"),
+            UsbDriverError::TransferFailed => write!(f, "Transfer failed"),
+            UsbDriverError::DeviceNotFound => write!(f, "Device not found"),
+            UsbDriverError::EndpointError => write!(f, "Endpoint error"),
+            UsbDriverError::HubError => write!(f, "Hub error"),
+            UsbDriverError::ControllerError => write!(f, "Controller error"),
+            UsbDriverError::MemoryError => write!(f, "Memory allocation error"),
+            UsbDriverError::InvalidParameter => write!(f, "Invalid parameter"),
+            UsbDriverError::NotSupported => write!(f, "Operation not supported"),
+            UsbDriverError::DeviceDisconnected => write!(f, "Device disconnected"),
+            UsbDriverError::BusError => write!(f, "Bus error"),
+            UsbDriverError::ProtocolError => write!(f, "Protocol error"),
+            UsbDriverError::Timeout => write!(f, "Timeout"),
+            UsbDriverError::BufferOverflow => write!(f, "Buffer overflow"),
+            UsbDriverError::UsbError(e) => write!(f, "USB error: {:?}", e),
+            UsbDriverError::XhciError(msg) => write!(f, "xHCI error: {}", msg),
+            UsbDriverError::PowerError => write!(f, "Power management error"),
+            UsbDriverError::InitializationError => write!(f, "Initialization error"),
         }
     }
 }
 
-/// Result type for USB operations
-pub type Result<T> = core::result::Result<T, UsbError>;
+impl From<UsbError> for UsbDriverError {
+    fn from(error: UsbError) -> Self {
+        UsbDriverError::UsbError(error)
+    }
+}

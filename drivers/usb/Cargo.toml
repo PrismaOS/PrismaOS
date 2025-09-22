@@ -41,6 +41,11 @@ luminal_rt = { workspace = true }
 ez_pci = "1.2.0"
 ids_rs = { git = "https://github.com/tristanpoland/IDS_RS", rev = "07a057efb6ed7db1c7ec68a4f5b5b12cd830763a", version = "0.1.0" }
 
+# Local USB stack and xHCI controller crates
+usb_device = { path = "../../crates/usb" }
+xhci = { path = "../../crates/xhci" }
+log = "0.4"
+
 
 [features]
 default = []

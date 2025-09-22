@@ -34,7 +34,9 @@
       "Bash(python3:*)",
       "Bash(timeout 30 cargo build --release)",
       "Bash(timeout 30 cargo check)",
-      "Bash(timeout 30 cargo check --package usb)"
+      "Bash(timeout 30 cargo check --package usb)",
+      "Bash(timeout 30 cargo check --message-format=short)",
+      "Bash(timeout 30 cargo check --package kernel)"
     ],
     "deny": [],
     "ask": []
