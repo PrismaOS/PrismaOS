@@ -474,6 +474,7 @@ dependencies = [
  "galleonfs",
  "hashbrown 0.14.5",
  "heapless 0.7.17",
+ "ide",
  "ids_rs",
  "lazy_static",
  "lib_kernel",

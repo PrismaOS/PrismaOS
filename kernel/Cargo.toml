@@ -22,12 +22,12 @@ heapless = { version = "0.7", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
 lazy_static = { version = "1.4", features = ["spin_no_std"] }
 hashbrown = { version = "0.14", default-features = false, features = ["ahash"] }
-
 luminal_rt = { workspace = true }
 
 # Workspace dependencies
 lib_kernel = { workspace = true }
 galleonfs = { workspace = true }
+ide = { workspace = true }
 ahci = { workspace = true }
 pci = { workspace = true }
 ez_pci = "1.2.0"

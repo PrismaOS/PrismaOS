@@ -35,6 +35,8 @@ pub mod userspace_isolation;
 pub mod boot_userspace;
 pub mod userspace_test;
 
+use ide::ide_initialize;
+
 mod init;
 mod utils;
 
@@ -72,6 +74,8 @@ unsafe extern "C" fn kmain() -> ! {
     }
 
     kprintln!("PciAccess {:?}", init_pci());
+
+    ide_initialize();
 
     // When compiling tests the harness re-exports `test_main()`; run it here.
     #[cfg(test)]

@@ -48,6 +48,8 @@ pub mod loader;
 pub mod execution;
 pub mod arch;
 pub mod memory;
+pub mod instruction;
+// pub mod syscall; // Temporarily disabled due to documentation requirements
 
 pub use error::{ElfError, Result};
 pub use header::{ElfHeader, ElfFile};

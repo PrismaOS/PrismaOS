@@ -7,6 +7,7 @@ use crate::section::{SectionHeaderIter, SectionType};
 use crate::symbol::{SymbolResolver, SymbolTable};
 use crate::relocation::{RelocationProcessor, RelocationIter, RelocationAddendIter};
 use crate::arch::{ArchitectureType, MemoryLayout};
+use crate::memory::{RealMemoryManager, MemoryProtection};
 use alloc::vec::Vec;
 
 /// Memory allocator trait for the loader
@@ -102,6 +103,110 @@ impl MemoryAllocator for SimpleAllocator {
         // For the simple allocator, we just validate the request
         if !_writable && !_executable {
             return Err(ElfError::PermissionDenied);
+        }
+        Ok(())
+    }
+}
+
+/// Real memory allocator using the RealMemoryManager
+#[derive(Debug)]
+pub struct RealAllocator {
+    memory_manager: RealMemoryManager,
+    next_virtual_addr: u64,
+}
+
+impl RealAllocator {
+    /// Create a new real allocator
+    pub fn new(memory_size: usize) -> Result<Self> {
+        let memory_manager = RealMemoryManager::new(memory_size)?;
+        Ok(Self {
+            memory_manager,
+            next_virtual_addr: 0x400000, // Start at typical code base
+        })
+    }
+
+    /// Get memory manager reference
+    pub fn memory_manager(&self) -> &RealMemoryManager {
+        &self.memory_manager
+    }
+
+    /// Get mutable memory manager reference
+    pub fn memory_manager_mut(&mut self) -> &mut RealMemoryManager {
+        &mut self.memory_manager
+    }
+}
+
+impl MemoryAllocator for RealAllocator {
+    fn allocate(&mut self, size: usize, alignment: usize) -> Result<*mut u8> {
+        // Align the next virtual address
+        let aligned_addr = (self.next_virtual_addr + alignment as u64 - 1) & !(alignment as u64 - 1);
+
+        // Determine protection (read-write for general allocations)
+        let protection = MemoryProtection::read_write();
+
+        // Map the required pages
+        self.memory_manager.map_range(aligned_addr, size, protection)?;
+
+        // Update next virtual address
+        self.next_virtual_addr = aligned_addr + size as u64;
+
+        Ok(aligned_addr as *mut u8)
+    }
+
+    fn deallocate(&mut self, ptr: *mut u8, size: usize) {
+        let vaddr = ptr as u64;
+        let page_size = 4096; // PAGE_SIZE
+        let num_pages = (size + page_size - 1) / page_size;
+
+        for i in 0..num_pages {
+            let page_addr = vaddr + (i * page_size) as u64;
+            let _ = self.memory_manager.unmap_page(page_addr);
+        }
+    }
+
+    fn map_at(&mut self, vaddr: u64, size: usize, writable: bool, executable: bool) -> Result<*mut u8> {
+        let protection = MemoryProtection {
+            read: true,
+            write: writable,
+            execute: executable,
+            present: true,
+        };
+
+        self.memory_manager.map_range(vaddr, size, protection)?;
+        Ok(vaddr as *mut u8)
+    }
+
+    fn unmap(&mut self, vaddr: u64, size: usize) -> Result<()> {
+        let page_size = 4096; // PAGE_SIZE
+        let start_page = vaddr & !(page_size as u64 - 1);
+        let end_addr = vaddr + size as u64;
+        let end_page = (end_addr + page_size as u64 - 1) & !(page_size as u64 - 1);
+        let num_pages = ((end_page - start_page) / page_size as u64) as usize;
+
+        for i in 0..num_pages {
+            let page_addr = start_page + (i * page_size) as u64;
+            self.memory_manager.unmap_page(page_addr)?;
+        }
+        Ok(())
+    }
+
+    fn protect(&mut self, vaddr: u64, size: usize, writable: bool, executable: bool) -> Result<()> {
+        let protection = MemoryProtection {
+            read: true,
+            write: writable,
+            execute: executable,
+            present: true,
+        };
+
+        let page_size = 4096; // PAGE_SIZE
+        let start_page = vaddr & !(page_size as u64 - 1);
+        let end_addr = vaddr + size as u64;
+        let end_page = (end_addr + page_size as u64 - 1) & !(page_size as u64 - 1);
+        let num_pages = ((end_page - start_page) / page_size as u64) as usize;
+
+        for i in 0..num_pages {
+            let page_addr = start_page + (i * page_size) as u64;
+            self.memory_manager.protect_page(page_addr, protection)?;
         }
         Ok(())
     }
@@ -241,6 +346,62 @@ impl LoadedBinary {
 
         Ok(())
     }
+
+    /// Create a new LoadedBinary with memory manager integration
+    pub fn with_memory_manager(
+        entry_point: u64,
+        segments: Vec<LoadedSegment>,
+        base_address: u64,
+        architecture: ArchitectureType,
+        symbol_resolver: SymbolResolver<'static>,
+    ) -> Self {
+        Self {
+            entry_point,
+            segments,
+            base_address,
+            architecture,
+            symbol_resolver,
+        }
+    }
+
+    /// Get memory usage statistics
+    pub fn memory_usage(&self) -> LoadedBinaryStats {
+        let total_size = self.segments.iter().map(|s| s.size).sum();
+        let executable_size = self.segments.iter()
+            .filter(|s| s.executable)
+            .map(|s| s.size)
+            .sum();
+        let writable_size = self.segments.iter()
+            .filter(|s| s.writable)
+            .map(|s| s.size)
+            .sum();
+
+        LoadedBinaryStats {
+            total_size,
+            executable_size,
+            writable_size,
+            segment_count: self.segments.len(),
+            entry_point: self.entry_point,
+            base_address: self.base_address,
+        }
+    }
+}
+
+/// Statistics for a loaded binary
+#[derive(Debug, Clone)]
+pub struct LoadedBinaryStats {
+    /// Total memory size
+    pub total_size: u64,
+    /// Executable memory size
+    pub executable_size: u64,
+    /// Writable memory size
+    pub writable_size: u64,
+    /// Number of segments
+    pub segment_count: usize,
+    /// Entry point address
+    pub entry_point: u64,
+    /// Base address
+    pub base_address: u64,
 }
 
 /// ELF loader
