@@ -383,7 +383,7 @@ impl XhciController {
                 let slot_id = self.enable_device_slot()?;
 
                 // Create device
-                let mut device = UsbDevice::new(0, port_id, speed); // Address 0 initially
+                let device = UsbDevice::new(0, port_id, speed); // Address 0 initially
 
                 // Store device temporarily
                 self.devices.insert(slot_id, device);
