@@ -277,7 +277,7 @@ pub fn read_boot_block_result(drive_num: u8) -> FilesystemResult<BootBlock> {
     // Read sector 0 (boot sector) from the specified drive
     let result = ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
     if result != 0 {
-        return Err(FilesystemError::IdeError(result));
+        return Err(FilesystemError::IdeError(result as u32));
     }
     
     // Check if it's valid
@@ -324,7 +324,7 @@ pub fn update_free_block_count(drive_num: u8, new_free_count: u64) -> Filesystem
     if result == 0 {
         Ok(())
     } else {
-        Err(FilesystemError::IdeError(result))
+        Err(FilesystemError::IdeError(result as u32))
     }
 }
 
@@ -367,7 +367,7 @@ pub fn allocate_blocks(drive_num: u8, block_count: u64) -> FilesystemResult<()> 
     if result == 0 {
         Ok(())
     } else {
-        Err(FilesystemError::IdeError(result))
+        Err(FilesystemError::IdeError(result as u32))
     }
 }
 
@@ -406,7 +406,7 @@ pub fn deallocate_blocks(drive_num: u8, block_count: u64) -> FilesystemResult<()
     if result == 0 {
         Ok(())
     } else {
-        Err(FilesystemError::IdeError(result))
+        Err(FilesystemError::IdeError(result as u32))
     }
 }
 
