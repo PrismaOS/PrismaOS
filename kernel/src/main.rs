@@ -77,7 +77,7 @@ unsafe extern "C" fn kmain() -> ! {
 
     kprintln!("PciAccess {:?}", init_pci());
 
-
+    ide_initialize();
     write_boot_block(0);
     kprintln!("If this doesnt work cry: {}", validate_boot_block(0));
     read_boot_block(0);

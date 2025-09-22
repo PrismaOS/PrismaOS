@@ -42,7 +42,6 @@ use ide::*;
 extern crate alloc;
 
 mod boot_block;
-mod fs;
 use boot_block::BootBlock;
 
 /// Result type for filesystem operations
