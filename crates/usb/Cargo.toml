@@ -1,5 +1,5 @@
 [package]
-name = "usb-device"
+name = "usb_device"
 description = "USB stack for embedded devices."
 version = "0.3.2"
 edition = "2018"

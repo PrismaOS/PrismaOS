@@ -1308,12 +1308,14 @@ dependencies = [
  "serde",
  "spin",
  "uart_16550",
+ "usb_device",
  "volatile 0.4.6",
  "x86_64 0.15.2",
+ "xhci",
 ]
 
 [[package]]
-name = "usb-device"
+name = "usb_device"
 version = "0.3.2"
 dependencies = [
  "defmt 0.3.100",

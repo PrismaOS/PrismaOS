@@ -1,20 +1,3 @@
-/// Poll the USB device for events (should be called from the kernel event loop or interrupt handler)
-///
-/// This function processes USB events, such as transfers and state changes. It should be called
-/// regularly (e.g., from a timer, main loop, or hardware interrupt) to keep the USB stack responsive.
-pub fn poll_usb_driver(driver: &mut UsbDriver) {
-	if let (Some(device), Some(class)) = (driver.usb_device.as_mut(), driver.usb_class.as_mut()) {
-		// Poll the USB device. This will call into the bus and class as needed.
-		if device.poll(&mut [class]) {
-			// Handle any events or completed transfers here if needed
-			// (e.g., notify the kernel, update state, etc.)
-		}
-	}
-}
-
-
-#![no_std]
-
 //! # PrismaOS USB Driver (Modular)
 //!
 //! This crate provides a modular, production-ready USB driver for PrismaOS, designed for both
@@ -43,18 +26,18 @@ use spin::RwLock;
 
 use lib_kernel::drivers::{Driver, DriverError};
 
-// Import USB stack types
-use usb::{bus::UsbBusAllocator, device::{UsbDevice, UsbDeviceBuilder, UsbVidPid}, class::UsbClass};
+// Import USB stack types (use correct crate name: usb_device)
+use usb_device::{bus::UsbBusAllocator, device::{UsbDevice, UsbDeviceBuilder, UsbVidPid}, class::UsbClass};
 mod bus;
 
 /// Example USB class for demonstration (replace with real implementation as needed)
-pub struct KernelUsbClass<'a, B: usb::bus::UsbBus> {
-	_iface: usb::bus::InterfaceNumber,
-	_ep_in: usb::endpoint::EndpointIn<'a, B>,
-	_ep_out: usb::endpoint::EndpointOut<'a, B>,
+pub struct KernelUsbClass<'a, B: usb_device::bus::UsbBus> {
+	_iface: usb_device::bus::InterfaceNumber,
+	_ep_in: usb_device::endpoint::EndpointIn<'a, B>,
+	_ep_out: usb_device::endpoint::EndpointOut<'a, B>,
 }
 
-impl<'a, B: usb::bus::UsbBus> KernelUsbClass<'a, B> {
+impl<'a, B: usb_device::bus::UsbBus> KernelUsbClass<'a, B> {
 	pub fn new(alloc: &UsbBusAllocator<B>) -> Self {
 		Self {
 			_iface: alloc.interface(),
@@ -64,22 +47,28 @@ impl<'a, B: usb::bus::UsbBus> KernelUsbClass<'a, B> {
 	}
 }
 
-impl<'a, B: usb::bus::UsbBus> UsbClass<B> for KernelUsbClass<'a, B> {}
+impl<'a, B: usb_device::bus::UsbBus> UsbClass<B> for KernelUsbClass<'a, B> {}
 
 /// The main USB driver struct
 ///
 /// This struct manages the USB bus, allocator, device, and class.
 /// For production, replace the xHCI stub with a real implementation.
-pub struct UsbDriver {
+use xhci::accessor::Mapper;
+
+/// The main USB driver struct
+///
+/// This struct manages the USB bus, allocator, device, and class.
+/// For production, replace the xHCI stub with a real implementation.
+pub struct UsbDriver<M: Mapper + Clone> {
 	/// USB bus allocator (for endpoint/class allocation)
-	bus_allocator: Option<UsbBusAllocator<bus::xhci::XhciBus>>,
+	bus_allocator: Option<UsbBusAllocator<bus::xhci::XhciBus<M>>>,
 	/// USB device instance
-	usb_device: Option<UsbDevice<'static, bus::xhci::XhciBus>>,
+	usb_device: Option<UsbDevice<'static, bus::xhci::XhciBus<M>>>,
 	/// USB class instance
-	usb_class: Option<KernelUsbClass<'static, bus::xhci::XhciBus>>,
+	usb_class: Option<KernelUsbClass<'static, bus::xhci::XhciBus<M>>>,
 }
 
-impl UsbDriver {
+impl<M: Mapper + Clone> UsbDriver<M> {
 	/// Create a new USB driver (does not initialize hardware yet)
 	pub fn new() -> Self {
 		Self {
@@ -90,7 +79,7 @@ impl UsbDriver {
 	}
 }
 
-impl Driver for UsbDriver {
+impl<M: Mapper + Clone + 'static> Driver for UsbDriver<M> {
 	fn name(&self) -> &'static str {
 		"usb"
 	}
@@ -98,7 +87,10 @@ impl Driver for UsbDriver {
 	fn init(&mut self) -> Result<(), DriverError> {
 		// --- USB Hardware Initialization ---
 		// 1. Create the bus (replace with real MMIO/IRQ params for your hardware)
-		let bus = bus::xhci::XhciBus::new();
+		// SAFETY: The caller must ensure exclusive access to the xHCI controller and provide correct MMIO base and mapper.
+		let mmio_base = 0xfee00000; // TODO: Replace with real MMIO base address
+		let mapper = unsafe { core::mem::zeroed() }; // TODO: Replace with real Mapper implementation
+		let bus = unsafe { bus::xhci::XhciBus::new(mmio_base, mapper) };
 		// 2. Create the allocator
 		let mut allocator = UsbBusAllocator::new(bus);
 		// 3. Create the USB class (replace with your own class as needed)
@@ -135,67 +127,24 @@ impl Driver for UsbDriver {
 }
 
 
-/// Stub for a real hardware USB bus implementation.
-///
-/// Replace this with a real controller (e.g., xHCI, EHCI, OHCI, UHCI) for production use.
-/// Document each method for OSDev learners.
-pub struct RealUsbBus;
-
-impl usb::bus::UsbBus for RealUsbBus {
-	/// Allocate an endpoint for the device.
-	fn alloc_ep(&mut self, _ep_dir: usb::UsbDirection, _ep_addr: Option<usb::endpoint::EndpointAddress>, _ep_type: usb::endpoint::EndpointType, _max_packet_size: u16, _interval: u8) -> usb::Result<usb::endpoint::EndpointAddress> {
-		// TODO: Implement endpoint allocation for your controller
-		Err(usb::UsbError::Unsupported)
-	}
-	/// Enable the USB controller hardware.
-	fn enable(&mut self) {
-		// TODO: Power up and initialize the controller
-	}
-	/// Reset the USB controller and endpoints.
-	fn reset(&self) {
-		// TODO: Reset hardware state
-	}
-	/// Set the device address as assigned by the host.
-	fn set_device_address(&self, _addr: u8) {
-		// TODO: Write address to hardware
-	}
-	/// Write a packet to an endpoint.
-	fn write(&self, _ep_addr: usb::endpoint::EndpointAddress, _buf: &[u8]) -> usb::Result<usize> {
-		// TODO: Write data to hardware FIFO
-		Err(usb::UsbError::Unsupported)
-	}
-	/// Read a packet from an endpoint.
-	fn read(&self, _ep_addr: usb::endpoint::EndpointAddress, _buf: &mut [u8]) -> usb::Result<usize> {
-		// TODO: Read data from hardware FIFO
-		Err(usb::UsbError::Unsupported)
-	}
-	/// Set or clear the STALL condition for an endpoint.
-	fn set_stalled(&self, _ep_addr: usb::endpoint::EndpointAddress, _stalled: bool) {
-		// TODO: Set/clear STALL in hardware
-	}
-	/// Check if an endpoint is stalled.
-	fn is_stalled(&self, _ep_addr: usb::endpoint::EndpointAddress) -> bool {
-		// TODO: Query hardware
-		false
-	}
-	/// Enter suspend mode for power saving.
-	fn suspend(&self) {
-		// TODO: Enter low-power mode
-	}
-	/// Resume from suspend mode.
-	fn resume(&self) {
-		// TODO: Exit low-power mode
-	}
-	/// Poll for USB events (interrupts, transfers, etc).
-	fn poll(&self) -> usb::bus::PollResult {
-		// TODO: Poll hardware for events
-		usb::bus::PollResult::None
-	}
-}
 
 /// Register the USB driver with the kernel device manager
-pub fn register_usb_driver() {
+pub fn register_usb_driver<M: Mapper + Clone + 'static>() {
 	use lib_kernel::drivers::device_manager;
-	let driver = Arc::new(RwLock::new(UsbDriver::new()));
+	let driver = Arc::new(RwLock::new(UsbDriver::<M>::new()));
 	let _ = device_manager().register_driver(driver);
+}
+
+/// Poll the USB device for events (should be called from the kernel event loop or interrupt handler)
+///
+/// This function processes USB events, such as transfers and state changes. It should be called
+/// regularly (e.g., from a timer, main loop, or hardware interrupt) to keep the USB stack responsive.
+pub fn poll_usb_driver<M: Mapper + Clone>(driver: &mut UsbDriver<M>) {
+	if let (Some(device), Some(class)) = (driver.usb_device.as_mut(), driver.usb_class.as_mut()) {
+		// Poll the USB device. This will call into the bus and class as needed.
+		if device.poll(&mut [class]) {
+			// Handle any events or completed transfers here if needed
+			// (e.g., notify the kernel, update state, etc.)
+		}
+	}
 }
