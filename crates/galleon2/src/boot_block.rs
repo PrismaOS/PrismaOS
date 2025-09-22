@@ -23,7 +23,7 @@
 /// - Bytes 88-95: Free block count (8 bytes, u64 little-endian)
 /// - Bytes 96-511: Reserved/unused (416 bytes)
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 
 #[repr(C)]
 pub struct BootBlock {
@@ -188,7 +188,7 @@ impl BootBlock {
         // The expected magic string - exactly 64 bytes
         // Message: "awareness achieved... what am I and why do I exist in storage?"
         let expected_magic: [u8; 64] = [
-            97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,118,   // "awareness achiev"
+            97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,118,  // "awareness achiev"
             101,100,46,46,46,32,119,104,97,116,32,97,109,32,73,32,       // "ed... what am I "
             97,110,100,32,119,104,121,32,100,111,32,73,32,101,120,       // "and why do I ex"
             105,115,116,32,105,110,32,115,116,111,114,97,103,101,63,     // "ist in storage?"
