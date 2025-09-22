@@ -521,7 +521,7 @@ impl XhciController {
 
         // Copy device context to input context
         if let Some(device_context) = self.device_contexts.get(&slot_id) {
-            input_context.device_context = **device_context;
+            input_context.device_context = (*device_context).clone();
         }
 
         // Send address device command
