@@ -618,6 +618,132 @@ impl XhciController {
         self.devices.values().collect()
     }
 
+    /// Submit a control transfer
+    pub fn submit_control_transfer(
+        &mut self,
+        device_address: u8,
+        setup_packet: UsbRequest,
+        data: Vec<u8>,
+        direction: UsbDirection,
+    ) -> Result<u32> {
+        let slot_id = self.find_slot_by_address(device_address)?;
+
+        if let Some(ring) = self.transfer_rings.get_mut(&(slot_id, 0)) {
+            self.transfer_manager.submit_control_transfer(
+                device_address,
+                0, // Control endpoint
+                setup_packet,
+                data,
+                direction,
+                ring,
+            )
+        } else {
+            Err(UsbError::InvalidEndpoint)
+        }
+    }
+
+    /// Submit a bulk transfer
+    pub fn submit_bulk_transfer(
+        &mut self,
+        device_address: u8,
+        endpoint: u8,
+        data: Vec<u8>,
+        direction: UsbDirection,
+    ) -> Result<u32> {
+        let slot_id = self.find_slot_by_address(device_address)?;
+
+        if let Some(ring) = self.transfer_rings.get_mut(&(slot_id, endpoint)) {
+            self.transfer_manager.submit_bulk_transfer(
+                device_address,
+                endpoint,
+                data,
+                direction,
+                ring,
+            )
+        } else {
+            Err(UsbError::InvalidEndpoint)
+        }
+    }
+
+    /// Submit an interrupt transfer
+    pub fn submit_interrupt_transfer(
+        &mut self,
+        device_address: u8,
+        endpoint: u8,
+        data: Vec<u8>,
+        direction: UsbDirection,
+        interval: u16,
+    ) -> Result<u32> {
+        let slot_id = self.find_slot_by_address(device_address)?;
+
+        if let Some(ring) = self.transfer_rings.get_mut(&(slot_id, endpoint)) {
+            self.transfer_manager.submit_interrupt_transfer(
+                device_address,
+                endpoint,
+                data,
+                direction,
+                interval,
+                ring,
+            )
+        } else {
+            Err(UsbError::InvalidEndpoint)
+        }
+    }
+
+    /// Submit an isochronous transfer
+    pub fn submit_isochronous_transfer(
+        &mut self,
+        device_address: u8,
+        endpoint: u8,
+        data: Vec<u8>,
+        direction: UsbDirection,
+        frame_number: u16,
+    ) -> Result<u32> {
+        let slot_id = self.find_slot_by_address(device_address)?;
+
+        if let Some(ring) = self.transfer_rings.get_mut(&(slot_id, endpoint)) {
+            self.transfer_manager.submit_isochronous_transfer(
+                device_address,
+                endpoint,
+                data,
+                direction,
+                frame_number,
+                ring,
+            )
+        } else {
+            Err(UsbError::InvalidEndpoint)
+        }
+    }
+
+    /// Get transfer status
+    pub fn get_transfer_status(&self, transfer_id: u32) -> Option<UsbTransferStatus> {
+        self.transfer_manager.get_transfer_status(transfer_id)
+    }
+
+    /// Cancel a transfer
+    pub fn cancel_transfer(&mut self, transfer_id: u32) -> Result<()> {
+        self.transfer_manager.cancel_transfer(transfer_id)
+    }
+
+    /// Get completed transfers
+    pub fn get_completed_transfers(&mut self) -> Vec<UsbTransferResult> {
+        self.transfer_manager.get_completed_transfers()
+    }
+
+    /// Get transfer statistics
+    pub fn get_transfer_stats(&self) -> UsbTransferStats {
+        self.transfer_manager.get_stats()
+    }
+
+    /// Find slot ID by device address
+    fn find_slot_by_address(&self, device_address: u8) -> Result<u8> {
+        self.devices
+            .iter()
+            .find(|(_, device)| device.address == device_address)
+            .map(|(slot_id, _)| *slot_id)
+            .ok_or(UsbError::DeviceNotFound)
+    }
+
     /// Shutdown the controller
     fn shutdown_controller(&mut self) -> Result<()> {
         if let Some(op_regs) = &mut self.op_regs {
