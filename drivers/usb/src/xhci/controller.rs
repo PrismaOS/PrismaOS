@@ -90,6 +90,7 @@ impl XhciController {
             allocated_slots: [false; 256],
             transfer_rings: BTreeMap::new(),
             device_contexts: BTreeMap::new(),
+            transfer_manager: UsbTransferManager::new(),
             state: ControllerState::Uninitialized,
             irq_line,
         }
