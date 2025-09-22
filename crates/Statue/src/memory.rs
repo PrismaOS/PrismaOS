@@ -87,6 +87,7 @@ impl PageTableEntry {
 }
 
 /// Real memory manager with page tables
+#[derive(Debug)]
 pub struct RealMemoryManager {
     /// Physical memory pool
     physical_memory: Vec<u8>,

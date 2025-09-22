@@ -52,6 +52,8 @@ pub enum ElfError {
     DynamicLinkingFailed,
     /// Execution setup failure
     ExecutionSetupFailed,
+    /// Unsupported operation
+    UnsupportedOperation,
     /// Invalid string table
     InvalidStringTable,
     /// String not found in string table
@@ -91,6 +93,7 @@ impl ElfError {
             ElfError::CircularDependency => "Circular dependency detected",
             ElfError::DynamicLinkingFailed => "Dynamic linking failed",
             ElfError::ExecutionSetupFailed => "Execution setup failed",
+            ElfError::UnsupportedOperation => "Unsupported operation",
             ElfError::InvalidStringTable => "Invalid string table",
             ElfError::StringNotFound => "String not found in string table",
             ElfError::IndexOutOfBounds => "Index out of bounds",

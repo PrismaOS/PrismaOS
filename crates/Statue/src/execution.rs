@@ -4,18 +4,9 @@ use crate::error::{ElfError, Result};
 use crate::loader::LoadedBinary;
 use crate::arch::{ArchitectureType, ExecutionState, AArch64ExecutionState, RiscVExecutionState};
 use crate::arch::{CallingConvention, SystemVAbi};
+use crate::instruction::{InstructionResult, X86_64Interpreter, AArch64Interpreter, RiscVInterpreter};
 use alloc::{vec::Vec, string::String, format};
 
-/// Result of instruction execution
-#[derive(Debug, Clone, Copy)]
-enum InstructionResult {
-    /// Continue execution
-    Continue,
-    /// Exit with code
-    Exit(u64),
-    /// System call made
-    SystemCall,
-}
 
 /// Execution environment configuration
 #[derive(Debug, Clone)]
@@ -281,19 +272,19 @@ impl ExecutionContext {
                             let ip = (*self_ptr).instruction_pointer();
                             let instruction_bytes = (*self_ptr).binary.read_memory(ip, 16)
                                 .map_err(|_| ElfError::ExecutionSetupFailed)?;
-                            (*self_ptr).execute_x86_64_instruction(state, instruction_bytes)
+                            X86_64Interpreter::execute_instruction(state, instruction_bytes)
                         }
                         ProcessorState::AArch64(state) => {
                             let ip = (*self_ptr).instruction_pointer();
                             let instruction_bytes = (*self_ptr).binary.read_memory(ip, 16)
                                 .map_err(|_| ElfError::ExecutionSetupFailed)?;
-                            (*self_ptr).execute_aarch64_instruction(state, instruction_bytes)
+                            AArch64Interpreter::execute_instruction(state, instruction_bytes)
                         }
                         ProcessorState::RiscV(state) => {
                             let ip = (*self_ptr).instruction_pointer();
                             let instruction_bytes = (*self_ptr).binary.read_memory(ip, 16)
                                 .map_err(|_| ElfError::ExecutionSetupFailed)?;
-                            (*self_ptr).execute_riscv_instruction(state, instruction_bytes)
+                            RiscVInterpreter::execute_instruction(state, instruction_bytes)
                         }
                     }
                 }
@@ -304,16 +295,87 @@ impl ExecutionContext {
                 InstructionResult::Exit(code) => {
                     return Ok(code);
                 },
-                InstructionResult::SystemCall => {
-                    let exit_code = self.handle_system_call()?;
-                    let should_exit = match &self.processor_state {
-                        ProcessorState::X86_64(state) => state.rax == 60,
-                        ProcessorState::AArch64(state) => state.x[8] == 93,
-                        ProcessorState::RiscV(state) => state.x[17] == 93,
-                    };
-                    if should_exit {
-                        return Ok(exit_code);
+                InstructionResult::Jump(target) => {
+                    match &mut self.processor_state {
+                        ProcessorState::X86_64(state) => state.rip = target,
+                        ProcessorState::AArch64(state) => state.pc = target,
+                        ProcessorState::RiscV(state) => state.pc = target,
                     }
+                },
+                InstructionResult::ConditionalJump(target, condition) => {
+                    if condition {
+                        match &mut self.processor_state {
+                            ProcessorState::X86_64(state) => state.rip = target,
+                            ProcessorState::AArch64(state) => state.pc = target,
+                            ProcessorState::RiscV(state) => state.pc = target,
+                        }
+                    }
+                },
+                InstructionResult::Call(target) => {
+                    // Push return address and jump to target
+                    match &mut self.processor_state {
+                        ProcessorState::X86_64(state) => {
+                            state.rsp = state.rsp.wrapping_sub(8);
+                            // In a real implementation, we'd write return address to stack
+                            state.rip = target;
+                        },
+                        ProcessorState::AArch64(state) => {
+                            state.x[30] = state.pc + 4; // Link register
+                            state.pc = target;
+                        },
+                        ProcessorState::RiscV(state) => {
+                            state.x[1] = state.pc + 4; // Return address register
+                            state.pc = target;
+                        },
+                    }
+                },
+                InstructionResult::Return => {
+                    match &mut self.processor_state {
+                        ProcessorState::X86_64(state) => {
+                            // In a real implementation, we'd pop return address from stack
+                            state.rsp = state.rsp.wrapping_add(8);
+                            return Ok(state.rax);
+                        },
+                        ProcessorState::AArch64(state) => {
+                            state.pc = state.x[30]; // Link register
+                        },
+                        ProcessorState::RiscV(state) => {
+                            state.pc = state.x[1]; // Return address register
+                        },
+                    }
+                },
+                InstructionResult::SystemCall => {
+                    // Simple syscall handling for now
+                    let exit_code = match &mut self.processor_state {
+                        ProcessorState::X86_64(state) => {
+                            match state.rax {
+                                60 => state.rdi, // sys_exit
+                                _ => {
+                                    state.rip += 2; // advance past syscall
+                                    continue;
+                                }
+                            }
+                        }
+                        ProcessorState::AArch64(state) => {
+                            match state.x[8] {
+                                93 => state.x[0], // exit
+                                _ => {
+                                    state.pc += 4;
+                                    continue;
+                                }
+                            }
+                        }
+                        ProcessorState::RiscV(state) => {
+                            match state.x[17] { // a7 register
+                                93 => state.x[10], // exit
+                                _ => {
+                                    state.pc += 4;
+                                    continue;
+                                }
+                            }
+                        }
+                    };
+                    return Ok(exit_code);
                 },
             }
 
@@ -321,180 +383,7 @@ impl ExecutionContext {
         }
     }
 
-    /// Execute x86_64 instruction
-    fn execute_x86_64_instruction(&mut self, state: &mut ExecutionState, bytes: &[u8]) -> Result<InstructionResult> {
-        if bytes.len() < 2 {
-            return Err(ElfError::ExecutionSetupFailed);
-        }
 
-        // Decode common x86_64 instructions
-        match bytes[0] {
-            // MOV immediate to register (REX.W + 0xC7 + ModR/M)
-            0x48 if bytes[1] == 0xc7 && bytes.len() >= 7 => {
-                let reg = bytes[2] & 0x7;
-                let immediate = u32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]) as u64;
-
-                match reg {
-                    0 => state.rax = immediate, // MOV $imm, %rax
-                    7 => state.rdi = immediate, // MOV $imm, %rdi
-                    _ => {}
-                }
-                state.rip += 7;
-                Ok(InstructionResult::Continue)
-            }
-            // SYSCALL (0x0F 0x05)
-            0x0f if bytes[1] == 0x05 => {
-                Ok(InstructionResult::SystemCall)
-            }
-            // NOP (0x90)
-            0x90 => {
-                state.rip += 1;
-                Ok(InstructionResult::Continue)
-            }
-            // RET (0xC3)
-            0xc3 => {
-                // Simple return - just exit for now
-                Ok(InstructionResult::Exit(state.rax))
-            }
-            _ => {
-                // Unknown instruction - skip it
-                state.rip += 1;
-                Ok(InstructionResult::Continue)
-            }
-        }
-    }
-
-    /// Execute AArch64 instruction
-    fn execute_aarch64_instruction(&mut self, state: &mut AArch64ExecutionState, bytes: &[u8]) -> Result<InstructionResult> {
-        if bytes.len() < 4 {
-            return Err(ElfError::ExecutionSetupFailed);
-        }
-
-        let instruction = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-
-        // Decode common AArch64 instructions
-        match instruction {
-            // MOV x8, #93 (0xd2800ba8)
-            0xd2800ba8 => {
-                state.x[8] = 93; // exit syscall number
-                state.pc += 4;
-                Ok(InstructionResult::Continue)
-            }
-            // MOV x0, #0 (0xd2800000)
-            0xd2800000 => {
-                state.x[0] = 0; // exit code
-                state.pc += 4;
-                Ok(InstructionResult::Continue)
-            }
-            // SVC #0 (0xd4000001)
-            0xd4000001 => {
-                Ok(InstructionResult::SystemCall)
-            }
-            // NOP (0xd503201f)
-            0xd503201f => {
-                state.pc += 4;
-                Ok(InstructionResult::Continue)
-            }
-            _ => {
-                // Unknown instruction - skip it
-                state.pc += 4;
-                Ok(InstructionResult::Continue)
-            }
-        }
-    }
-
-    /// Execute RISC-V instruction
-    fn execute_riscv_instruction(&mut self, state: &mut RiscVExecutionState, bytes: &[u8]) -> Result<InstructionResult> {
-        if bytes.len() < 4 {
-            return Err(ElfError::ExecutionSetupFailed);
-        }
-
-        let instruction = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-
-        // Decode common RISC-V instructions
-        match instruction & 0x7f {
-            // ECALL (0x73)
-            0x73 if instruction == 0x73 => {
-                Ok(InstructionResult::SystemCall)
-            }
-            // ADDI (0x13)
-            0x13 => {
-                let rd = ((instruction >> 7) & 0x1f) as usize;
-                let rs1 = ((instruction >> 15) & 0x1f) as usize;
-                let imm = ((instruction as i32) >> 20) as i64 as u64;
-
-                if rd != 0 { // x0 is always zero
-                    state.x[rd] = state.x[rs1].wrapping_add(imm);
-                }
-                state.pc += 4;
-                Ok(InstructionResult::Continue)
-            }
-            _ => {
-                // Unknown instruction - skip it
-                state.pc += 4;
-                Ok(InstructionResult::Continue)
-            }
-        }
-    }
-
-    /// Handle system call
-    fn handle_system_call(&mut self) -> Result<u64> {
-        match &mut self.processor_state {
-            ProcessorState::X86_64(state) => {
-                match state.rax {
-                    60 => { // sys_exit
-                        Ok(state.rdi) // return exit code
-                    }
-                    1 => { // sys_write
-                        // For now, just return success
-                        state.rax = state.rdx; // return bytes written
-                        state.rip += 2; // advance past syscall
-                        Ok(0)
-                    }
-                    _ => {
-                        // Unknown syscall
-                        state.rax = u64::MAX; // -1 (error)
-                        state.rip += 2;
-                        Ok(0)
-                    }
-                }
-            }
-            ProcessorState::AArch64(state) => {
-                match state.x[8] {
-                    93 => { // exit
-                        Ok(state.x[0]) // return exit code
-                    }
-                    64 => { // write
-                        state.x[0] = state.x[2]; // return bytes written
-                        state.pc += 4;
-                        Ok(0)
-                    }
-                    _ => {
-                        state.x[0] = u64::MAX; // -1 (error)
-                        state.pc += 4;
-                        Ok(0)
-                    }
-                }
-            }
-            ProcessorState::RiscV(state) => {
-                match state.x[17] { // a7 register
-                    93 => { // exit
-                        Ok(state.x[10]) // return exit code from a0
-                    }
-                    64 => { // write
-                        state.x[10] = state.x[12]; // return bytes written
-                        state.pc += 4;
-                        Ok(0)
-                    }
-                    _ => {
-                        state.x[10] = u64::MAX; // -1 (error)
-                        state.pc += 4;
-                        Ok(0)
-                    }
-                }
-            }
-        }
-    }
 
     /// Call a function at the given address with arguments
     pub fn call_function(&mut self, address: u64, args: &[u64]) -> Result<u64> {
@@ -649,6 +538,7 @@ impl ExecutionContext {
         }
     }
 }
+
 
 /// Process lifecycle management
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
