@@ -18,9 +18,10 @@ pub fn init_higher_level_subsystems() {
     x86_64::instructions::interrupts::enable();
     lib_kernel::kprintln!("[OK] Interrupts enabled");
 
-    // Device initialization is currently simplified/optional
-    // crate::drivers::init_devices();
-    lib_kernel::kprintln!("[OK] Device drivers ready (init skipped for now)");
+
+    // Register all kernel drivers (including USB)
+    lib_kernel::drivers::register_all_drivers();
+    lib_kernel::kprintln!("[OK] Device drivers registered");
 
     // Simple visual test to ensure the renderer is functional
     lib_kernel::utils::color_test::show_rainbow_test();

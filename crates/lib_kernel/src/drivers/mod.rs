@@ -1,4 +1,10 @@
 use alloc::{boxed::Box, collections::BTreeMap, sync::Arc, vec::Vec};
+mod usb;
+/// Call this during kernel driver system initialization
+pub fn register_all_drivers() {
+    usb::register_usb_driver();
+    // Register other drivers here
+}
 use core::any::Any;
 use spin::RwLock;
 
