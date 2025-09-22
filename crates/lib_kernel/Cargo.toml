@@ -29,9 +29,6 @@ luminal_rt = { workspace = true }
 ez_pci = "1.2.0"
 ids_rs = { git = "https://github.com/tristanpoland/IDS_RS", rev = "07a057efb6ed7db1c7ec68a4f5b5b12cd830763a", version = "0.1.0" }
 
-# Add the USB driver crate as a dependency
-usb = { path = "../../../drivers/usb" }
-
 # CRITICAL: Set panic strategy to abort
 [profile.dev]
 panic = "abort"
