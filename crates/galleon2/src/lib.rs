@@ -30,7 +30,7 @@
 
 // Import all symbols from the IDE interface module
 // This provides low-level disk I/O functions like ide_read_sectors and ide_write_sectors
-use ide::{ide_write_sectors, ide_read_sectors};
+use ide::*;
 
 mod boot_block;
 use boot_block::BootBlock;
@@ -118,11 +118,48 @@ pub fn validate_boot_block(drive_num: u8) -> bool {
     
     // Read sector 0 (boot sector) from the specified drive
     // Parameters: drive_number, starting_sector, sector_count, buffer
-    // Fixed: Pass mutable pointer to the array data for reading
     ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
     
     // Validate the magic string in the boot block
     BootBlock::is_valid(&sector)
+}
+
+/// Reads and parses the boot block from a drive
+/// 
+/// Reads the boot sector and deserializes it into a BootBlock structure,
+/// allowing access to filesystem metadata like version, block count, etc.
+/// 
+/// # Parameters
+/// - `drive_num`: The IDE drive number to read from
+/// 
+/// # Returns
+/// - `Some(BootBlock)`: If the drive contains a valid boot block
+/// - `None`: If the drive has no valid boot block or read fails
+/// 
+/// # Example
+/// ```rust
+/// if let Some(boot_block) = read_boot_block(0) {
+///     println!("Filesystem version: {}", boot_block.version);
+///     println!("Total blocks: {}", boot_block.total_blocks);
+///     println!("Free blocks: {}", boot_block.free_block_count);
+/// } else {
+///     println!("No valid filesystem found");
+/// }
+/// ```
+pub fn read_boot_block(drive_num: u8) -> Option<BootBlock> {
+    // Allocate buffer for reading the boot sector
+    let mut sector = [0u8; 512];
+    
+    // Read sector 0 (boot sector) from the specified drive
+    ide_read_sectors(drive_num, 0, 1, sector.as_mut_ptr() as *mut _);
+    
+    // Check if it's valid first
+    if BootBlock::is_valid(&sector) {
+        // Deserialize the sector into a BootBlock structure
+        Some(BootBlock::from_sector(&sector))
+    } else {
+        None
+    }
 }
 
 // Additional helper functions could be added here for:

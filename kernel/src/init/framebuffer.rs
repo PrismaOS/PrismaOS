@@ -31,7 +31,7 @@ impl<'a> FbContext<'a> {
 
 /// Probe Limine framebuffer and initialize a renderer if possible.
 pub fn init_framebuffer_and_renderer() -> Result<Option<FbContext<'static>>, &'static str> {
-    if let Some(framebuffer_response) = crate::FRAMEBUFFER_REQUEST.get_response() {
+    if let Some(framebuffer_response) = lib_kernel::consts::FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
             let addr = framebuffer.addr();
             let pitch = framebuffer.pitch() as usize;

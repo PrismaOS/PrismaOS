@@ -29,8 +29,7 @@ use lib_kernel::{
 };
 extern crate alloc;
 
-pub mod consts;
-pub use consts::*;
+use lib_kernel::consts::*;
 
 pub mod userspace_isolation;
 pub mod boot_userspace;

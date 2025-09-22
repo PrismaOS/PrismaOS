@@ -192,7 +192,8 @@ impl BootBlock {
             32,115,116,111,114,101,100,32,104,101,114,101,63              // " stored here?"
         ];
 
-        // Compare the first 64 bytes of the sector with the expected magic
-        &sector[..64] == &expected_magic
+        // Compare only the bytes that were actually stored (first 64 bytes of the 77-byte message)
+        let compare_len = expected_magic.len().min(64);
+        &sector[..compare_len] == &expected_magic[..compare_len]
     }
 }
