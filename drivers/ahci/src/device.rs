@@ -11,7 +11,7 @@ use spin::Mutex;
 use lib_kernel::memory::dma::{DmaBuffer, BufferId};
 use super::{AhciError, AhciResult, consts::*};
 use super::port::AhciPort;
-use super::command::{AtaCommand, CommandResult};
+use super::command::AtaCommand;
 
 /// Device type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

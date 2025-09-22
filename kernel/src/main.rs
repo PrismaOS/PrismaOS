@@ -27,6 +27,7 @@ use lib_kernel::{
     consts::BASE_REVISION,
     scrolling_text,
 };
+
 extern crate alloc;
 
 use lib_kernel::consts::*;
@@ -42,6 +43,7 @@ mod utils;
 
 use ahci;
 use pci::init_pci;
+use galleon2::{read_boot_block, validate_boot_block, write_boot_block};
 
 // NOTE: speaker and other modules are available as `crate::speaker` if
 /// needed; avoid glob imports here to keep the top-level clean.
@@ -76,8 +78,10 @@ unsafe extern "C" fn kmain() -> ! {
     kprintln!("PciAccess {:?}", init_pci());
 
     ide_initialize();
+    write_boot_block(0);
+    kprint!("If this doesnt work cry: {}", validate_boot_block(0));
+    kprint!("If this doesnt work cry: {}", read_boot_block(0));
 
-    // When compiling tests the harness re-exports `test_main()`; run it here.
     #[cfg(test)]
     test_main();
 

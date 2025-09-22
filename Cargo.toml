@@ -9,7 +9,7 @@ resolver = "2"
 [workspace.dependencies]
 
 # Internal crates
-galleonfs = { path = "./crates/galleonfs" }
+galleon2 = { path = "./crates/galleon2" }
 luminal_rt = { path = "./crates/Luminal/" }
 kernel = { path = "./kernel" }
 lib_kernel = { path = "./crates/lib_kernel/" }
