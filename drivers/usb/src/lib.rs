@@ -294,3 +294,165 @@ pub fn get_usb_stats() -> UsbStats {
         hubs,
     }
 }
+
+/// Submit a control transfer to a USB device
+pub fn submit_control_transfer(
+    device_address: u8,
+    setup_packet: UsbRequest,
+    data: Vec<u8>,
+    direction: UsbDirection,
+) -> Result<u32> {
+    let mut subsystem = USB_SUBSYSTEM.write();
+
+    // Find the controller managing this device
+    for controller in &mut subsystem.xhci_controllers {
+        let mut controller_lock = controller.write();
+
+        // Check if this controller has the device
+        if controller_lock.get_devices().iter().any(|d| d.address == device_address) {
+            return controller_lock.submit_control_transfer(device_address, setup_packet, data, direction);
+        }
+    }
+
+    Err(UsbError::DeviceNotFound)
+}
+
+/// Submit a bulk transfer to a USB device
+pub fn submit_bulk_transfer(
+    device_address: u8,
+    endpoint: u8,
+    data: Vec<u8>,
+    direction: UsbDirection,
+) -> Result<u32> {
+    let mut subsystem = USB_SUBSYSTEM.write();
+
+    // Find the controller managing this device
+    for controller in &mut subsystem.xhci_controllers {
+        let mut controller_lock = controller.write();
+
+        // Check if this controller has the device
+        if controller_lock.get_devices().iter().any(|d| d.address == device_address) {
+            return controller_lock.submit_bulk_transfer(device_address, endpoint, data, direction);
+        }
+    }
+
+    Err(UsbError::DeviceNotFound)
+}
+
+/// Submit an interrupt transfer to a USB device
+pub fn submit_interrupt_transfer(
+    device_address: u8,
+    endpoint: u8,
+    data: Vec<u8>,
+    direction: UsbDirection,
+    interval: u16,
+) -> Result<u32> {
+    let mut subsystem = USB_SUBSYSTEM.write();
+
+    // Find the controller managing this device
+    for controller in &mut subsystem.xhci_controllers {
+        let mut controller_lock = controller.write();
+
+        // Check if this controller has the device
+        if controller_lock.get_devices().iter().any(|d| d.address == device_address) {
+            return controller_lock.submit_interrupt_transfer(device_address, endpoint, data, direction, interval);
+        }
+    }
+
+    Err(UsbError::DeviceNotFound)
+}
+
+/// Submit an isochronous transfer to a USB device
+pub fn submit_isochronous_transfer(
+    device_address: u8,
+    endpoint: u8,
+    data: Vec<u8>,
+    direction: UsbDirection,
+    frame_number: u16,
+) -> Result<u32> {
+    let mut subsystem = USB_SUBSYSTEM.write();
+
+    // Find the controller managing this device
+    for controller in &mut subsystem.xhci_controllers {
+        let mut controller_lock = controller.write();
+
+        // Check if this controller has the device
+        if controller_lock.get_devices().iter().any(|d| d.address == device_address) {
+            return controller_lock.submit_isochronous_transfer(device_address, endpoint, data, direction, frame_number);
+        }
+    }
+
+    Err(UsbError::DeviceNotFound)
+}
+
+/// Get the status of a transfer
+pub fn get_transfer_status(transfer_id: u32) -> Option<UsbTransferStatus> {
+    let subsystem = USB_SUBSYSTEM.read();
+
+    // Check all controllers for the transfer
+    for controller in &subsystem.xhci_controllers {
+        let controller_lock = controller.read();
+        if let Some(status) = controller_lock.get_transfer_status(transfer_id) {
+            return Some(status);
+        }
+    }
+
+    None
+}
+
+/// Cancel a transfer
+pub fn cancel_transfer(transfer_id: u32) -> Result<()> {
+    let mut subsystem = USB_SUBSYSTEM.write();
+
+    // Try to cancel on all controllers
+    for controller in &mut subsystem.xhci_controllers {
+        let mut controller_lock = controller.write();
+        if controller_lock.cancel_transfer(transfer_id).is_ok() {
+            return Ok(());
+        }
+    }
+
+    Err(UsbError::InvalidRequest)
+}
+
+/// Get all completed transfers from all controllers
+pub fn get_completed_transfers() -> Vec<UsbTransferResult> {
+    let mut subsystem = USB_SUBSYSTEM.write();
+    let mut all_results = Vec::new();
+
+    for controller in &mut subsystem.xhci_controllers {
+        let mut controller_lock = controller.write();
+        all_results.extend(controller_lock.get_completed_transfers());
+    }
+
+    all_results
+}
+
+/// Helper functions for common control transfers
+pub mod control_transfers {
+    use super::*;
+
+    /// Get device descriptor
+    pub fn get_device_descriptor(device_address: u8) -> Result<u32> {
+        let request = ControlTransfer::get_descriptor(device_address, descriptor_types::DEVICE, 0, 0, 18);
+        submit_control_transfer(device_address, request.setup_packet.unwrap(), request.data, request.direction)
+    }
+
+    /// Get configuration descriptor
+    pub fn get_configuration_descriptor(device_address: u8, config_index: u8) -> Result<u32> {
+        let request = ControlTransfer::get_descriptor(device_address, descriptor_types::CONFIGURATION, config_index, 0, 9);
+        submit_control_transfer(device_address, request.setup_packet.unwrap(), request.data, request.direction)
+    }
+
+    /// Set device address
+    pub fn set_device_address(current_address: u8, new_address: u8) -> Result<u32> {
+        let request = ControlTransfer::set_address(current_address, new_address);
+        submit_control_transfer(current_address, request.setup_packet.unwrap(), request.data, request.direction)
+    }
+
+    /// Set device configuration
+    pub fn set_device_configuration(device_address: u8, configuration_value: u8) -> Result<u32> {
+        let request = ControlTransfer::set_configuration(device_address, configuration_value);
+        submit_control_transfer(device_address, request.setup_packet.unwrap(), request.data, request.direction)
+    }
+}

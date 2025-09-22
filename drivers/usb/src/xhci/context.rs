@@ -300,7 +300,7 @@ impl Default for EndpointContext {
 }
 
 /// Device Context (contains slot context and endpoint contexts)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DeviceContext {
     /// Slot context
     pub slot_context: SlotContext,
