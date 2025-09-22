@@ -8,12 +8,14 @@ pub mod context;
 pub mod ring;
 pub mod trb;
 pub mod registers;
+pub mod transfer;
 
 pub use controller::XhciController;
 pub use context::*;
 pub use ring::*;
 pub use trb::*;
 pub use registers::*;
+pub use transfer::*;
 
 use crate::error::{UsbError, Result};
 use crate::types::*;
