@@ -38,7 +38,7 @@ pub struct KernelUsbClass<'a, B: usb_device::bus::UsbBus> {
 }
 
 impl<'a, B: usb_device::bus::UsbBus> KernelUsbClass<'a, B> {
-	pub fn new(alloc: &UsbBusAllocator<B>) -> Self {
+	pub fn new(alloc: &'a UsbBusAllocator<B>) -> Self {
 		Self {
 			_iface: alloc.interface(),
 			_ep_in: alloc.bulk(64),
@@ -59,16 +59,16 @@ use xhci::accessor::Mapper;
 ///
 /// This struct manages the USB bus, allocator, device, and class.
 /// For production, replace the xHCI stub with a real implementation.
-pub struct UsbDriver<M: Mapper + Clone> {
+pub struct UsbDriver<M: Mapper + Clone + 'static> {
 	/// USB bus allocator (for endpoint/class allocation)
-	bus_allocator: Option<UsbBusAllocator<bus::xhci::XhciBus<M>>>,
+	bus_allocator: Option<Box<UsbBusAllocator<bus::xhci::XhciBus<M>>>>,
 	/// USB device instance
-	usb_device: Option<UsbDevice<'static, bus::xhci::XhciBus<M>>>,
+	usb_device: Option<Box<UsbDevice<'static, bus::xhci::XhciBus<M>>>>,
 	/// USB class instance
-	usb_class: Option<KernelUsbClass<'static, bus::xhci::XhciBus<M>>>,
+	usb_class: Option<Box<KernelUsbClass<'static, bus::xhci::XhciBus<M>>>>,
 }
 
-impl<M: Mapper + Clone> UsbDriver<M> {
+impl<M: Mapper + Clone + 'static> UsbDriver<M> {
 	/// Create a new USB driver (does not initialize hardware yet)
 	pub fn new() -> Self {
 		Self {
@@ -92,15 +92,17 @@ impl<M: Mapper + Clone + 'static> Driver for UsbDriver<M> {
 		let mapper = unsafe { core::mem::zeroed() }; // TODO: Replace with real Mapper implementation
 		let bus = unsafe { bus::xhci::XhciBus::new(mmio_base, mapper) };
 		// 2. Create the allocator
-		let mut allocator = UsbBusAllocator::new(bus);
+		let mut allocator = Box::new(UsbBusAllocator::new(bus));
 		// 3. Create the USB class (replace with your own class as needed)
-		let class = KernelUsbClass::new(&allocator);
-		// 4. Build the USB device
-		let device = UsbDeviceBuilder::new(&allocator, UsbVidPid(0x1234, 0x5678))
-			.manufacturer("PrismaOS")
-			.product("PrismaOS USB Device")
-			.serial_number("0001")
+		let class = Box::new(KernelUsbClass::new(&allocator));
+		// 4. Build the USB device (update for correct builder API)
+		let mut ep0_buf = [0u8; 256];
+		let device_result = UsbDeviceBuilder::new(&*allocator, UsbVidPid(0x1234, 0x5678), &mut ep0_buf)
 			.build();
+		let device = match device_result {
+			Ok(dev) => Box::new(dev),
+			Err(_) => return Err(DriverError::Unknown),
+		};
 		// 5. Store in struct for later use
 		self.bus_allocator = Some(allocator);
 		self.usb_class = Some(class);
@@ -139,10 +141,10 @@ pub fn register_usb_driver<M: Mapper + Clone + 'static>() {
 ///
 /// This function processes USB events, such as transfers and state changes. It should be called
 /// regularly (e.g., from a timer, main loop, or hardware interrupt) to keep the USB stack responsive.
-pub fn poll_usb_driver<M: Mapper + Clone>(driver: &mut UsbDriver<M>) {
+pub fn poll_usb_driver<M: Mapper + Clone + 'static>(driver: &mut UsbDriver<M>) {
 	if let (Some(device), Some(class)) = (driver.usb_device.as_mut(), driver.usb_class.as_mut()) {
 		// Poll the USB device. This will call into the bus and class as needed.
-		if device.poll(&mut [class]) {
+		if device.poll(&mut [class.as_mut()]) {
 			// Handle any events or completed transfers here if needed
 			// (e.g., notify the kernel, update state, etc.)
 		}
