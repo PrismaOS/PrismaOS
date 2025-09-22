@@ -21,7 +21,7 @@ mod consts;
 use error::{UsbError, Result};
 use types::*;
 use enumeration::*;
-use xhci::XhciController;
+use xhci::{XhciController, UsbTransferManager, UsbTransferRequest, UsbTransferType, UsbTransferStatus, UsbTransferResult, UsbTransferStats, ControlTransfer};
 use lib_kernel::drivers::{Driver, DriverError, device_manager};
 use alloc::{sync::Arc, boxed::Box, vec::Vec};
 use spin::RwLock;
