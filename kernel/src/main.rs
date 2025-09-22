@@ -79,8 +79,8 @@ unsafe extern "C" fn kmain() -> ! {
 
     ide_initialize();
     write_boot_block(0);
-    kprint!("If this doesnt work cry: {}", validate_boot_block(0));
-    kprint!("If this doesnt work cry: {}", read_boot_block(0));
+    kprintln!("If this doesnt work cry: {}", validate_boot_block(0));
+    kprintln!("If this doesnt work cry: {}", read_boot_block(0));
 
     #[cfg(test)]
     test_main();
