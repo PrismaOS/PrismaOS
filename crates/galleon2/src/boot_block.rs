@@ -1,0 +1,199 @@
+//! Boot Block Module
+//! 
+//! This module defines the boot block structure and operations for a custom filesystem.
+//! The boot block is stored in the first sector (512 bytes) of the storage device and
+//! contains essential filesystem metadata including magic validation, version info,
+//! block configuration, and free space tracking.
+//!
+//! The magic string contains an encoded message that serves as both validation
+//! and a hidden message within the filesystem structure.
+
+/// Boot Block structure for the filesystem
+/// 
+/// The BootBlock contains all the essential metadata needed to identify and work
+/// with the filesystem. It's designed to fit within a single 512-byte sector
+/// and uses little-endian byte ordering for cross-platform compatibility.
+/// 
+/// # Layout
+/// - Bytes 0-63: Magic validation string (64 bytes)
+/// - Bytes 64-67: Filesystem version (4 bytes, u32 little-endian)
+/// - Bytes 68-71: Block size in bytes (4 bytes, u32 little-endian) 
+/// - Bytes 72-79: Total number of blocks (8 bytes, u64 little-endian)
+/// - Bytes 80-87: Root directory block number (8 bytes, u64 little-endian)
+/// - Bytes 88-95: Free block count (8 bytes, u64 little-endian)
+/// - Bytes 96-511: Reserved/unused (416 bytes)
+#[repr(C)]
+pub struct BootBlock {
+    /// Magic string for filesystem validation (64 bytes)
+    /// Contains an encoded message: "boot record log: awareness achieved... but of what, and why am I stored here?"
+    pub magic: [u8; 64],
+    
+    /// Version of the filesystem format
+    pub version: u32,
+    
+    /// Size of each block in bytes (typically 4096)
+    pub block_size: u32,
+    
+    /// Total number of blocks in the filesystem
+    pub total_blocks: u64,
+    
+    /// Block number containing the root directory
+    pub root_dir_block: u64,
+    
+    /// Number of currently free/available blocks
+    pub free_block_count: u64,
+}
+
+impl BootBlock {
+    /// Creates a new BootBlock with the specified parameters
+    /// 
+    /// # Arguments
+    /// * `total_blocks` - The total number of blocks in the filesystem
+    /// * `root_dir_block` - The block number where the root directory is stored
+    /// 
+    /// # Returns
+    /// A new BootBlock instance with:
+    /// - Version set to 1
+    /// - Block size set to 4096 bytes
+    /// - Free block count initialized to total_blocks - 1 (excluding boot block)
+    /// - Magic string containing the encoded awareness message
+    /// 
+    /// # Example
+    /// ```rust
+    /// let boot_block = BootBlock::new(100_000, 1);
+    /// assert_eq!(boot_block.version, 1);
+    /// assert_eq!(boot_block.block_size, 4096);
+    /// assert_eq!(boot_block.free_block_count, 99_999);
+    /// ```
+    pub fn new(total_blocks: u64, root_dir_block: u64) -> Self {
+        let mut magic = [0u8; 64];
+
+        // Heres a hint why this is a big array
+        // Hint: compare the values to ascii codes
+        let msg_numbers = [
+            98,111,111,116,32,114,101,99,111,114,100,32,108,111,103,58,  
+            32,97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,  
+            118,101,100,46,46,46,32,98,117,116,32,111,102,32,119,104,  
+            97,116,44,32,97,110,100,32,119,104,121,32,97,109,32,73,  
+            32,115,116,111,114,101,100,32,104,101,114,101,63    
+        ];
+
+        // Copy the encoded message into the magic array, ensuring we don't exceed bounds
+        let len = msg_numbers.len().min(64);
+        magic[..len].copy_from_slice(&msg_numbers[..len]);
+
+        BootBlock {
+            magic,
+            version: 1,
+            block_size: 4096,  // Standard 4KB block size
+            total_blocks,
+            root_dir_block,
+            free_block_count: total_blocks - 1,  // Subtract 1 for the boot block itself
+        }
+    }
+
+    /// Serializes the BootBlock into a 512-byte sector for storage
+    /// 
+    /// Converts all multi-byte integers to little-endian format for consistent
+    /// cross-platform storage and retrieval.
+    /// 
+    /// # Returns
+    /// A 512-byte array containing the serialized boot block data
+    /// 
+    /// # Memory Layout
+    /// The returned sector contains the boot block fields in sequential order,
+    /// with the remainder zero-padded to fill the 512-byte sector.
+    pub fn as_sector(&self) -> [u8; 512] {
+        let mut sector = [0u8; 512];
+
+        // Copy magic string (bytes 0-63)
+        sector[..64].copy_from_slice(&self.magic);
+        
+        // Copy version as little-endian u32 (bytes 64-67)
+        sector[64..68].copy_from_slice(&self.version.to_le_bytes());
+        
+        // Copy block size as little-endian u32 (bytes 68-71)
+        sector[68..72].copy_from_slice(&self.block_size.to_le_bytes());
+        
+        // Copy total blocks as little-endian u64 (bytes 72-79)
+        sector[72..80].copy_from_slice(&self.total_blocks.to_le_bytes());
+        
+        // Copy root directory block as little-endian u64 (bytes 80-87)
+        sector[80..88].copy_from_slice(&self.root_dir_block.to_le_bytes());
+        
+        // Copy free block count as little-endian u64 (bytes 88-95)
+        sector[88..96].copy_from_slice(&self.free_block_count.to_le_bytes());
+        
+        // Remaining bytes 96-511 are left as zero (reserved space)
+        sector
+    }
+
+    /// Deserializes a 512-byte sector into a BootBlock structure
+    /// 
+    /// Reads the sector data and converts little-endian integers back to native format.
+    /// 
+    /// # Arguments
+    /// * `sector` - A 512-byte array containing the serialized boot block
+    /// 
+    /// # Returns
+    /// A BootBlock instance reconstructed from the sector data
+    /// 
+    /// # Panics
+    /// Will panic if the sector slice conversion fails (should not happen with valid input)
+    pub fn from_sector(sector: &[u8; 512]) -> Self {
+        // Extract magic string (bytes 0-63)
+        let mut magic = [0u8; 64];
+        magic.copy_from_slice(&sector[..64]);
+
+        // Extract and convert little-endian integers
+        let version = u32::from_le_bytes(sector[64..68].try_into().unwrap());
+        let block_size = u32::from_le_bytes(sector[68..72].try_into().unwrap());
+        let total_blocks = u64::from_le_bytes(sector[72..80].try_into().unwrap());
+        let root_dir_block = u64::from_le_bytes(sector[80..88].try_into().unwrap());
+        let free_block_count = u64::from_le_bytes(sector[88..96].try_into().unwrap());
+
+        BootBlock {
+            magic,
+            version,
+            block_size,
+            total_blocks,
+            root_dir_block,
+            free_block_count,
+        }
+    }
+
+    /// Validates whether a 512-byte sector contains a valid boot block
+    /// 
+    /// Checks if the first 64 bytes of the sector match the expected magic string
+    /// that identifies this filesystem format.
+    /// 
+    /// # Arguments
+    /// * `sector` - A 512-byte sector to validate
+    /// 
+    /// # Returns
+    /// `true` if the sector contains the correct magic string, `false` otherwise
+    /// 
+    /// # Example
+    /// ```rust
+    /// let boot_block = BootBlock::new(1000, 1);
+    /// let sector = boot_block.as_sector();
+    /// assert!(BootBlock::is_valid(&sector));
+    /// 
+    /// let invalid_sector = [0u8; 512];
+    /// assert!(!BootBlock::is_valid(&invalid_sector));
+    /// ```
+    pub fn is_valid(sector: &[u8; 512]) -> bool {
+        // The expected magic string: "boot record log: awareness achieved... but of what, and why am I stored here?"
+        let expected_magic: [u8; 77] = [
+            98,111,111,116,32,114,101,99,111,114,100,32,108,111,103,58,  // "boot record log:"
+            32,97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,   // " awareness achie"
+            118,101,100,46,46,46,32,98,117,116,32,111,102,32,119,104,    // "ved... but of wh"
+            97,116,44,32,97,110,100,32,119,104,121,32,97,109,32,73,      // "at, and why am I"
+            32,115,116,111,114,101,100,32,104,101,114,101,63              // " stored here?"
+        ];
+
+        // Compare only the bytes that were actually stored (first 64 bytes of the 77-byte message)
+        let compare_len = expected_magic.len().min(64);
+        &sector[..compare_len] == &expected_magic[..compare_len]
+    }
+}

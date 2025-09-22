@@ -4,9 +4,9 @@
 //! initializing both a global renderer (for macros) and an explicit
 //! `ScrollingTextRenderer` returned to the caller for direct use.
 
-use crate::font::{PsfFont, FONT_PSF};
-use crate::scrolling_text::{init_global_renderer, ScrollingTextRenderer};
-use crate::utils;
+use lib_kernel::font::{PsfFont, FONT_PSF};
+use lib_kernel::scrolling_text::{init_global_renderer, ScrollingTextRenderer};
+use lib_kernel::utils;
 use alloc::format;
 
 // Keep a single font instance alive for the global renderer needing a
@@ -31,7 +31,7 @@ impl<'a> FbContext<'a> {
 
 /// Probe Limine framebuffer and initialize a renderer if possible.
 pub fn init_framebuffer_and_renderer() -> Result<Option<FbContext<'static>>, &'static str> {
-    if let Some(framebuffer_response) = crate::FRAMEBUFFER_REQUEST.get_response() {
+    if let Some(framebuffer_response) = lib_kernel::consts::FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
             let addr = framebuffer.addr();
             let pitch = framebuffer.pitch() as usize;
