@@ -146,7 +146,7 @@ pub fn write_custom_boot_block(drive_num: u8, total_blocks: u64, root_dir_block:
     if result == 0 {
         Ok(())
     } else {
-        Err(FilesystemError::IdeError(result))
+        Err(FilesystemError::IdeError(result as u32))
     }
 }
 
