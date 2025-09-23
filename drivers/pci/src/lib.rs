@@ -191,43 +191,37 @@ fn read_pci_bar0(pci_fn: &mut ez_pci::PciFunction) -> (Option<u64>, Option<usize
 pub fn init_pci() -> PciAccess {
     let db = PciDatabase::get();
 
-    let mut pci = unsafe {
-        PciAccess::new_pci()
-    };
-    
+    let mut pci = unsafe { PciAccess::new_pci() };
     let busses = pci.known_buses();
 
     for bus in busses {
         kprintln!("Found bus: {}", bus);
         let mut specific_bus = pci.bus(bus);
 
-        // Enumerate through all possible device slots (0-31) on this bus
-        for device_num in 0..32u8 {
+        for device_num in 0..32 {
             if let Some(mut device) = specific_bus.device(device_num) {
-                let functions: core::ops::RangeInclusive<u8> = device.possible_functions();
+                let functions = device.possible_functions();
 
-                // Try to get vendor/device ID and class from function 0 (common for all functions)
-                let fn0 = device.function(0);
-                let (vendor_id, device_id, class_code) = if let Some(mut fn0) = fn0 {
-                    let vendor_id = fn0.vendor_id();
-                    let device_id = fn0.device_id();
-                    let class_code = fn0.class_code();
-                    kprintln!("  Vendor ID: {:#06x}, Device ID: {:#06x}", vendor_id, device_id);
-                    (vendor_id, device_id, class_code)
-                } else {
-                    continue; // Skip invalid devices
-                };
-
-                // Skip invalid devices
-                if vendor_id == 0xFFFF || vendor_id == 0x0000 {
-                    continue;
-                }
-
-                // Guess PCI type
-                let mut is_pcie = false;
-                let mut has_capabilities = false;
-                for function in functions.clone() {
+                for function in functions {
                     if let Some(mut pci_fn) = device.function(function) {
+                        let vendor_id = pci_fn.vendor_id();
+                        let device_id = pci_fn.device_id();
+                        let class_code = pci_fn.class_code();
+
+                        let vendor_id_obj = VendorId::new(vendor_id as u16);
+                        let device_id_obj = DeviceId::new(device_id as u16);
+
+                        let vendor_name = db.find_vendor(vendor_id_obj)
+                            .map(|v| v.name())
+                            .unwrap_or("Unknown Vendor");
+                        let device_name = db.find_device(vendor_id_obj, device_id_obj)
+                            .map(|d| d.name())
+                            .unwrap_or("Unknown Device");
+
+                        // Guess PCI type
+                        let mut is_pcie = false;
+                        let mut has_capabilities = false;
+
                         if let Some(mut caps) = pci_fn.capabilities() {
                             let mut found_cap = false;
                             while let Some(cap) = caps.next() {
@@ -240,51 +234,28 @@ pub fn init_pci() -> PciAccess {
                                 has_capabilities = true;
                             }
                         }
-                    }
-                }
 
-                let pci_type = if is_pcie {
-                    "PCI Express"
-                } else if has_capabilities {
-                    "PCI"
-                } else {
-                    "Legacy/Non-PCI"
-                };
-                kprintln!("  Type: {}", pci_type);
+                        let pci_type = if is_pcie {
+                            "PCI Express"
+                        } else if has_capabilities {
+                            "PCI"
+                        } else {
+                            "Legacy/Non-PCI"
+                        };
 
-                // Optionally, print all functions and their capabilities count
-                for function in functions {
-                    kprintln!("    function: {}", function);
-                    if let Some(mut pci_fn) = device.function(function) {
+                        kprintln!("  Bus {:02x}, Device {:02x}, Function {:x}:", bus, device_num, function);
+                        kprintln!("    Vendor: {} ({:#06x}), Device: {} ({:#06x})", vendor_name, vendor_id, device_name, device_id);
+                        kprintln!("    Type: {}", pci_type);
+                        kprintln!("    Class Code: {:#04x}", class_code);
+
                         if let Some(caps) = pci_fn.capabilities() {
                             let cap_count = caps.count();
-                            kprintln!("      Number of capabilities: {}", cap_count);
+                            kprintln!("    Number of capabilities: {}", cap_count);
                         } else {
-                            kprintln!("      Could not fetch capabilities");
+                            kprintln!("    Could not fetch capabilities");
                         }
-                    } else {
-                        kprintln!("      Could not fetch function");
                     }
                 }
-
-                let vendor_id_struct = VendorId::new(vendor_id);
-                let device_id_struct = DeviceId::new(device_id);
-                let mut vendor_name: &str = "Unknown Vendor";
-                let mut device_name: &str = "Unknown Device";
-
-                if let Some(vendor) = db.find_vendor(vendor_id_struct) {
-                    vendor_name = vendor.name();
-                    if let Some(device) = vendor.find_device(device_id_struct) {
-                        device_name = device.name();
-                    }
-                }
-
-                // Print summary for this device
-                kprintln!("  === Device Summary ===");
-                kprintln!("    Vendor: {}, Device: {}", vendor_name.to_string(), device_name.to_string());
-                kprintln!("    Type: {}", pci_type);
-                kprintln!("    Hardware: (class: {:#04x})", class_code);
-                kprintln!("  =====================");
             }
         }
     }

@@ -1,9 +1,12 @@
 use lib_kernel::kprintln;
+
 use crate::{FilesystemError, FilesystemResult, validate_super_block, write_super_block};
 
 pub fn init_fs(drive: u8) -> FilesystemResult<()> {
     let disk_size_bytes = return_drive_size_bytes(drive);
+
     if disk_size_bytes == 0 {
+        kprintln!("bytes {}", disk_size_bytes);
         return Err(FilesystemError::DriveNotFound);
     }
 

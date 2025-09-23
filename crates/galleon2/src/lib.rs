@@ -38,15 +38,17 @@
 
 // Import all symbols from the IDE interface module
 // This provides low-level disk I/O functions like ide_read_sectors and ide_write_sectors
-use ide::{ide_read_sectors, ide_write_sectors, return_drive_size_bytes};
+pub use ide::{ide_write_sectors, ide_read_sectors, return_ide_size_bytes};
 
 extern crate alloc;
 
 pub mod fs;
+
 mod file;
 mod super_block;
 mod super_block;
 use super_block::SuperBlock;
+
 
 
 /// The result type for all filesystem operations in this library.

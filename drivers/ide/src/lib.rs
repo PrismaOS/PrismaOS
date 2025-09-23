@@ -482,12 +482,12 @@ pub fn ide_initialize() {
         for i in 0..4 {
             if IDE_DEVICES[i].reserved != 0 {
                 // Convert model bytes to string, handling potential UTF-8 issues
-                let model_str = core::str::from_utf8(&IDE_DEVICES[i].model)
+                let _model_str = core::str::from_utf8(&IDE_DEVICES[i].model)
                     .unwrap_or("[Invalid UTF-8]")
                     .trim_end_matches(char::from(0));
 
                 // Convert size from sectors to GB
-                let size_gb = IDE_DEVICES[i].size as f32 / 2_097_152.0;
+                let _size_gb = IDE_DEVICES[i].size as f32 / 2_097_152.0;
             
                 // Convert size from sectors to bytes
                 size_bytes = IDE_DEVICES[i].size as u64 * 512;
