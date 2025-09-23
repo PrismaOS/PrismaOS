@@ -496,8 +496,11 @@ pub fn ide_initialize() {
     }
 }
 
-/// This is an fs helper to return the disk size in bytes
-pub fn get_disk_size() -> u64 {
-    // Placeholder implementation
-    0
+/// Read the name you dont need docs smh
+pub fn return_drive_size_bytes(drive: u8) -> u64 {
+    unsafe {
+        let size = IDE_DEVICES[drive as usize].size as u64 * 512;
+
+        size
+    }
 }

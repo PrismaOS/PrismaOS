@@ -88,8 +88,7 @@ unsafe extern "C" fn kmain() -> ! {
     // |                                |
     // +--------------------------------+
     ide_initialize();
-    kprintln!("If this doesnt work cry: {}", validate_super_block(0));
-    read_super_block(0);
+    init_fs(0);
 
     // Initialize USB subsystem
     init_usb_controllers();
