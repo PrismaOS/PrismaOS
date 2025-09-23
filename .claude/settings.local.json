@@ -37,7 +37,8 @@
       "Bash(timeout 30 cargo check --package usb)",
       "Bash(timeout 30 cargo check --message-format=short)",
       "Bash(timeout 30 cargo check --package kernel)",
-      "Bash(timeout 30 cargo check --package pci)"
+      "Bash(timeout 30 cargo check --package pci)",
+      "Bash(timeout 30 cargo check --package lib_kernel --message-format=short)"
     ],
     "deny": [],
     "ask": []
