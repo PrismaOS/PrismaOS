@@ -21,6 +21,8 @@ pub struct UsbController {
     pub controller_type: UsbControllerType,
     pub vendor_name: String,
     pub device_name: String,
+    pub bar0_addr: Option<u64>,
+    pub bar0_size: Option<usize>,
 }
 
 /// Types of USB controllers
@@ -86,6 +88,9 @@ pub fn get_usb_controllers() -> Vec<UsbController> {
                                 other => UsbControllerType::Unknown(other),
                             };
 
+                            // Read PCI BAR0 for MMIO base address
+                            let (bar0_addr, bar0_size) = read_pci_bar0(&mut pci_fn);
+
                             usb_controllers.push(UsbController {
                                 bus,
                                 device: device_num,
@@ -98,6 +103,8 @@ pub fn get_usb_controllers() -> Vec<UsbController> {
                                 controller_type,
                                 vendor_name,
                                 device_name,
+                                bar0_addr,
+                                bar0_size,
                             });
                         }
                     }
@@ -107,6 +114,78 @@ pub fn get_usb_controllers() -> Vec<UsbController> {
     }
 
     usb_controllers
+}
+
+/// Read PCI BAR0 to get the MMIO base address and size
+fn read_pci_bar0(pci_fn: &mut ez_pci::PciFunction) -> (Option<u64>, Option<usize>) {
+    // Read BAR0 register (offset 0x10)
+    let bar0_value = pci_fn.read_u32(0x10);
+
+    if bar0_value == 0 || bar0_value == 0xFFFFFFFF {
+        return (None, None);
+    }
+
+    // Check if this is a memory BAR (bit 0 = 0)
+    if (bar0_value & 0x1) != 0 {
+        // This is an I/O BAR, not memory
+        return (None, None);
+    }
+
+    // Extract memory type (bits 2-1)
+    let mem_type = (bar0_value >> 1) & 0x3;
+
+    let (base_addr, bar_size) = match mem_type {
+        0x0 => {
+            // 32-bit BAR
+            let base = (bar0_value & 0xFFFFFFF0) as u64;
+
+            // Calculate size by writing all 1s and reading back
+            pci_fn.write_u32(0x10, 0xFFFFFFFF);
+            let size_mask = pci_fn.read_u32(0x10);
+            pci_fn.write_u32(0x10, bar0_value); // Restore original value
+
+            let size = if size_mask != 0 {
+                let masked = size_mask & 0xFFFFFFF0;
+                (!masked + 1) as usize
+            } else {
+                0
+            };
+
+            (base, size)
+        },
+        0x2 => {
+            // 64-bit BAR
+            let bar1_value = pci_fn.read_u32(0x14);
+            let base = ((bar0_value & 0xFFFFFFF0) as u64) | ((bar1_value as u64) << 32);
+
+            // Calculate size for 64-bit BAR
+            pci_fn.write_u32(0x10, 0xFFFFFFFF);
+            pci_fn.write_u32(0x14, 0xFFFFFFFF);
+            let size_mask_low = pci_fn.read_u32(0x10);
+            let size_mask_high = pci_fn.read_u32(0x14);
+            pci_fn.write_u32(0x10, bar0_value); // Restore original values
+            pci_fn.write_u32(0x14, bar1_value);
+
+            let size_mask = ((size_mask_low & 0xFFFFFFF0) as u64) | ((size_mask_high as u64) << 32);
+            let size = if size_mask != 0 {
+                (!size_mask + 1) as usize
+            } else {
+                0
+            };
+
+            (base, size)
+        },
+        _ => {
+            // Reserved or invalid type
+            return (None, None);
+        }
+    };
+
+    if base_addr == 0 || bar_size == 0 {
+        (None, None)
+    } else {
+        (Some(base_addr), Some(bar_size))
+    }
 }
 
 pub fn init_pci() -> PciAccess {

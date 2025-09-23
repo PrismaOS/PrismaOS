@@ -564,6 +564,7 @@ dependencies = [
  "usb",
  "volatile 0.4.6",
  "x86_64 0.15.2",
+ "xhci",
 ]
 
 [[package]]
@@ -599,6 +600,7 @@ dependencies = [
  "uart_16550",
  "volatile 0.4.6",
  "x86_64 0.15.2",
+ "xhci",
 ]
 
 [[package]]
