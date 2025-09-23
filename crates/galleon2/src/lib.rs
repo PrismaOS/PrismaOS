@@ -38,11 +38,11 @@
 
 // Import all symbols from the IDE interface module
 // This provides low-level disk I/O functions like ide_read_sectors and ide_write_sectors
-use ide::*;
+use ide::{ide_read_sectors, ide_write_sectors, return_drive_size_bytes};
 
 extern crate alloc;
 
-mod fs;
+pub mod fs;
 mod boot_block;
 use boot_block::BootBlock;
 

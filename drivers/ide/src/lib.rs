@@ -449,7 +449,7 @@ fn ide_polling(channel: u8, advanced_check: bool) -> u8 {
 /// 2. Clears the device table
 /// 3. Attempts to identify devices on all 4 possible positions
 /// 4. Prints information about detected devices
-pub fn ide_initialize() -> u64 {
+pub fn ide_initialize() {
     unsafe {
         // Disable IRQs for both IDE channels
         // We use polling mode instead of interrupt-driven I/O
@@ -493,6 +493,11 @@ pub fn ide_initialize() -> u64 {
                 size_bytes = IDE_DEVICES[i].size as u64 * 512;
             }
         }
-        return size_bytes;
     }
+}
+
+/// This is an fs helper to return the disk size in bytes
+pub fn get_disk_size() -> u64 {
+    // Placeholder implementation
+    0
 }

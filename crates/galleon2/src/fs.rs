@@ -1,9 +1,8 @@
-use ide::ide_initialize;
 use lib_kernel::kprintln;
 use crate::{FilesystemError, FilesystemResult, validate_boot_block, write_boot_block};
 
-pub fn init_fs(drive_num: u8) -> FilesystemResult<()> {
-    let disk_size_bytes = ide_initialize();
+pub fn init_fs(drive: u8) -> FilesystemResult<()> {
+    let disk_size_bytes = return_drive_size_bytes(drive);
     if disk_size_bytes == 0 {
         return Err(FilesystemError::DriveNotFound);
     }
@@ -17,17 +16,15 @@ pub fn init_fs(drive_num: u8) -> FilesystemResult<()> {
         return Err(FilesystemError::InsufficientSpace);
     }
 
-    if !write_boot_block(drive_num, total_blocks, block_size, 1) {
+    if !write_boot_block(drive, total_blocks, block_size, 1) {
         kprintln!("Boot block write error");
         return Err(FilesystemError::IdeError(1 as i32));
     }
 
-    if !validate_boot_block(drive_num) {
+    if !validate_boot_block(drive) {
         kprintln!("Failed to validate boot block!");
         return Err(FilesystemError::InvalidBootBlock);
     }
-
-
 
     Ok(())
 }

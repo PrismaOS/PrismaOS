@@ -14,6 +14,7 @@ galleon2 = { path = "./crates/galleon2" }
 luminal_rt = { path = "./crates/Luminal/" }
 kernel = { path = "./kernel" }
 lib_kernel = { path = "./crates/lib_kernel/" }
+xhci = { path = "./crates/xhci/" }
 
 # Drivers
 ide = { path = "./drivers/ide/" }
