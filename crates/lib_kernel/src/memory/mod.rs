@@ -1,6 +1,6 @@
 use x86_64::{
     structures::paging::{
-        FrameAllocator, Mapper, Page, PhysFrame,
+        FrameAllocator, Mapper, Page, PhysFrame, Size4KiB,
     },
     PhysAddr, VirtAddr,
 };
@@ -9,8 +9,10 @@ use x86_64::{
 pub mod allocator;
 pub mod paging;
 pub mod dma;
+pub mod mmio;
 
 pub use allocator::{init_heap, init_bootstrap_heap, HEAP_SIZE, HEAP_START, heap_stats};
+pub use mmio::{XhciMmioMapper, init_mmio_mapping, mmio_stats};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameAllocatorError;
@@ -20,6 +22,35 @@ pub struct BootInfoFrameAllocator {
     region_count: usize,
     current_region: usize,
     next_frame: PhysAddr,
+}
+
+/// Global frame allocator instance for the kernel
+static mut KERNEL_FRAME_ALLOCATOR: Option<BootInfoFrameAllocator> = None;
+
+/// Global kernel page table access
+static mut KERNEL_MAPPER: Option<*mut dyn Mapper<Size4KiB>> = None;
+
+/// Initialize the global kernel memory management
+pub unsafe fn init_kernel_memory_management(
+    frame_allocator: BootInfoFrameAllocator,
+    mapper: *mut dyn Mapper<Size4KiB>,
+) {
+    KERNEL_FRAME_ALLOCATOR = Some(frame_allocator);
+    KERNEL_MAPPER = Some(mapper);
+}
+
+/// Get access to the kernel's frame allocator
+pub fn get_kernel_frame_allocator() -> Option<&'static mut dyn FrameAllocator<Size4KiB>> {
+    unsafe {
+        KERNEL_FRAME_ALLOCATOR.as_mut().map(|fa| fa as &mut dyn FrameAllocator<Size4KiB>)
+    }
+}
+
+/// Get access to the kernel's page table mapper
+pub fn get_kernel_mapper() -> Option<&'static mut dyn Mapper<Size4KiB>> {
+    unsafe {
+        KERNEL_MAPPER.and_then(|ptr| ptr.as_mut())
+    }
 }
 
 impl BootInfoFrameAllocator {

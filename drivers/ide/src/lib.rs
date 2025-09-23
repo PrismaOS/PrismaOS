@@ -496,8 +496,11 @@ pub fn ide_initialize() {
     }
 }
 
-pub fn return_ide_size_bytes(drive: u8) -> u64 {
-    let size = unsafe { IDE_DEVICES[drive as usize].size as u64 * 512};
+/// Read the name you dont need docs smh
+pub fn return_drive_size_bytes(drive: u8) -> u64 {
+    unsafe {
+        let size = IDE_DEVICES[drive as usize].size as u64 * 512;
 
-    size
+        size
+    }
 }

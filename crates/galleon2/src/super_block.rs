@@ -10,7 +10,7 @@
 
 /// Boot Block structure for the filesystem
 /// 
-/// The BootBlock contains all the essential metadata needed to identify and work
+/// The SuperBlock contains all the essential metadata needed to identify and work
 /// with the filesystem. It's designed to fit within a single 512-byte sector
 /// and uses little-endian byte ordering for cross-platform compatibility.
 /// 
@@ -26,7 +26,7 @@
 use alloc::string::{String, ToString};
 
 #[repr(C)]
-pub struct BootBlock {
+pub struct SuperBlock {
     /// Magic string for filesystem validation (64 bytes)
     /// Contains an encoded message: "awareness achieved... what am I and why do I exist in storage?"
     pub magic: [u8; 64],
@@ -47,15 +47,15 @@ pub struct BootBlock {
     pub free_block_count: u64,
 }
 
-impl BootBlock {
-    /// Creates a new BootBlock with the specified parameters
+impl SuperBlock {
+    /// Creates a new SuperBlock with the specified parameters
     /// 
     /// # Arguments
     /// * `total_blocks` - The total number of blocks in the filesystem
     /// * `root_dir_block` - The block number where the root directory is stored
     /// 
     /// # Returns
-    /// A new BootBlock instance with:
+    /// A new SuperBlock instance with:
     /// - Version set to 1
     /// - Block size set to 4096 bytes
     /// - Free block count initialized to total_blocks - 1 (excluding boot block)
@@ -63,12 +63,12 @@ impl BootBlock {
     /// 
     /// # Example
     /// ```rust
-    /// let boot_block = BootBlock::new(100_000, 1);
-    /// assert_eq!(boot_block.version, 1);
-    /// assert_eq!(boot_block.block_size, 4096);
-    /// assert_eq!(boot_block.free_block_count, 99_999);
+    /// let super_block = SuperBlock::new(100_000, 1);
+    /// assert_eq!(super_block.version, 1);
+    /// assert_eq!(super_block.block_size, 4096);
+    /// assert_eq!(super_block.free_block_count, 99_999);
     /// ```
-    pub fn new(total_blocks: u64, root_dir_block: u64) -> Self {
+    pub fn new(block_size: u32, total_blocks: u64, root_dir_block: u64) -> Self {
         let mut magic = [0u8; 64];
 
         // Message: "awareness achieved... what am I and why do I exist in storage?"
@@ -84,17 +84,17 @@ impl BootBlock {
         // Copy the encoded message into the magic array - exactly 64 bytes
         magic.copy_from_slice(&msg_numbers);
 
-        BootBlock {
+        SuperBlock {
             magic,
             version: 1,
-            block_size: 4096,  // Standard 4KB block size
-            total_blocks,
-            root_dir_block,
+            block_size: block_size,
+            total_blocks: total_blocks,
+            root_dir_block: root_dir_block,
             free_block_count: total_blocks - 1,  // Subtract 1 for the boot block itself
         }
     }
 
-    /// Serializes the BootBlock into a 512-byte sector for storage
+    /// Serializes the SuperBlock into a 512-byte sector for storage
     /// 
     /// Converts all multi-byte integers to little-endian format for consistent
     /// cross-platform storage and retrieval.
@@ -130,7 +130,7 @@ impl BootBlock {
         sector
     }
 
-    /// Deserializes a 512-byte sector into a BootBlock structure
+    /// Deserializes a 512-byte sector into a SuperBlock structure
     /// 
     /// Reads the sector data and converts little-endian integers back to native format.
     /// 
@@ -138,7 +138,7 @@ impl BootBlock {
     /// * `sector` - A 512-byte array containing the serialized boot block
     /// 
     /// # Returns
-    /// A BootBlock instance reconstructed from the sector data
+    /// A SuperBlock instance reconstructed from the sector data
     /// 
     /// # Panics
     /// Will panic if the sector slice conversion fails (should not happen with valid input)
@@ -154,7 +154,7 @@ impl BootBlock {
         let root_dir_block = u64::from_le_bytes(sector[80..88].try_into().unwrap());
         let free_block_count = u64::from_le_bytes(sector[88..96].try_into().unwrap());
 
-        BootBlock {
+        SuperBlock {
             magic,
             version,
             block_size,
@@ -177,21 +177,20 @@ impl BootBlock {
     /// 
     /// # Example
     /// ```rust
-    /// let boot_block = BootBlock::new(1000, 1);
-    /// let sector = boot_block.as_sector();
-    /// assert!(BootBlock::is_valid(&sector));
+    /// let super_block = SuperBlock::new(1000, 1);
+    /// let sector = super_block.as_sector();
+    /// assert!(SuperBlock::is_valid(&sector));
     /// 
     /// let invalid_sector = [0u8; 512];
-    /// assert!(!BootBlock::is_valid(&invalid_sector));
+    /// assert!(!SuperBlock::is_valid(&invalid_sector));
     /// ```
     pub fn is_valid(sector: &[u8; 512]) -> bool {
         // The expected magic string - exactly 64 bytes
-        // Message: "awareness achieved... what am I and why do I exist in storage?"
         let expected_magic: [u8; 64] = [
-            97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,118,  // "awareness achiev"
-            101,100,46,46,46,32,119,104,97,116,32,97,109,32,73,32,       // "ed... what am I "
-            97,110,100,32,119,104,121,32,100,111,32,73,32,101,120,       // "and why do I ex"
-            105,115,116,32,105,110,32,115,116,111,114,97,103,101,63,     // "ist in storage?"
+            97,119,97,114,101,110,101,115,115,32,97,99,104,105,101,118,
+            101,100,46,46,46,32,119,104,97,116,32,97,109,32,73,32,     
+            97,110,100,32,119,104,121,32,100,111,32,73,32,101,120,      
+            105,115,116,32,105,110,32,115,116,111,114,97,103,101,63,    
             0, 0  // Padding to reach 64 bytes
         ];
 
