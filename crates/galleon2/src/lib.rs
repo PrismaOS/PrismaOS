@@ -42,6 +42,7 @@ use ide::*;
 
 extern crate alloc;
 
+mod fs;
 mod boot_block;
 use boot_block::BootBlock;
 
@@ -79,18 +80,18 @@ pub enum FilesystemError {
 /// ```
 /// galleon2::write_boot_block(0).unwrap();
 /// ```
-pub fn write_boot_block(drive_num: u8) -> FilesystemResult<()> {
+pub fn write_boot_block(drive_num: u8, total_blocks: u64, block_size: u32, root_dir_block: u64) -> bool{
     // Create a new boot block with 100,000 total blocks and root directory at block 1
-    let boot_block = BootBlock::new(100_000, 1);
+    let boot_block = BootBlock::new(block_size, total_blocks, root_dir_block);
     // Serialize the boot block into a 512-byte sector format
     let sector = boot_block.as_sector();
     // Write the boot block to sector 0 (boot sector) of the specified drive
     // Parameters: drive_number, starting_sector, sector_count, data_buffer
     let result = ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _);
     if result == 0 {
-        Ok(())
+        true
     } else {
-        Err(FilesystemError::IdeError(result as i32))
+        false
     }
 }
 

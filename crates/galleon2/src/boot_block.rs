@@ -68,7 +68,7 @@ impl BootBlock {
     /// assert_eq!(boot_block.block_size, 4096);
     /// assert_eq!(boot_block.free_block_count, 99_999);
     /// ```
-    pub fn new(total_blocks: u64, root_dir_block: u64) -> Self {
+    pub fn new(block_size: u32, total_blocks: u64, root_dir_block: u64) -> Self {
         let mut magic = [0u8; 64];
 
         // Message: "awareness achieved... what am I and why do I exist in storage?"
@@ -87,9 +87,9 @@ impl BootBlock {
         BootBlock {
             magic,
             version: 1,
-            block_size: 4096,  // Standard 4KB block size
-            total_blocks,
-            root_dir_block,
+            block_size: block_size,
+            total_blocks: total_blocks,
+            root_dir_block: root_dir_block,
             free_block_count: total_blocks - 1,  // Subtract 1 for the boot block itself
         }
     }
