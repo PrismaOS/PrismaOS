@@ -6,6 +6,7 @@ extern crate alloc;
 
 pub mod fs;
 mod file;
+mod mft;
 mod super_block;
 use super_block::SuperBlock;
 
@@ -64,6 +65,7 @@ pub fn validate_super_block(drive_num: u8) -> FilesystemResult<()> {
         Err(FilesystemError::InvalidBootBlock)
     }
 }
+
 
 /// Read the super block from the specified drive with proper error handling
 pub fn read_super_block(drive_num: u8) -> FilesystemResult<SuperBlock> {
