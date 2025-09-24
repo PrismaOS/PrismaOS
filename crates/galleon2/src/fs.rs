@@ -1,33 +1,35 @@
 use lib_kernel::kprintln;
 
-use crate::{FilesystemError, FilesystemResult, validate_super_block, write_super_block};
+use crate::{
+    return_drive_size_bytes, validate_super_block, 
+    write_super_block, FilesystemError, FilesystemResult
+};
 
+/// Initialize filesystem on a drive with proper error handling
 pub fn init_fs(drive: u8) -> FilesystemResult<()> {
-    let disk_size_bytes = return_drive_size_bytes(drive);
+    // Get disk size with error handling
+    let disk_size_bytes = return_drive_size_bytes(drive)?;
 
     if disk_size_bytes == 0 {
-        kprintln!("bytes {}", disk_size_bytes);
+        kprintln!("Drive size is 0 bytes");
         return Err(FilesystemError::DriveNotFound);
     }
 
     let block_size: u32 = 4096;
-
-    let total_blocks = disk_size_bytes as u64 / block_size as u64;
+    let total_blocks = disk_size_bytes / block_size as u64;
 
     if total_blocks < 2 {
-        // We need at least 1 boot block + 1 root directoy block
+        // We need at least 1 super block + 1 root directory block
+        kprintln!("Insufficient blocks: {}", total_blocks);
         return Err(FilesystemError::InsufficientSpace);
     }
 
-    if !write_super_block(drive, total_blocks, block_size, 1) {
-        kprintln!("Boot block write error");
-        return Err(FilesystemError::IdeError(1 as i32));
-    }
+    // Write super block with error handling
+    write_super_block(drive, total_blocks, block_size, 1)?;
 
-    if !validate_super_block(drive) {
-        kprintln!("Failed to validate boot block!");
-        return Err(FilesystemError::InvalidBootBlock);
-    }
+    // Validate that the super block was written correctly
+    validate_super_block(drive)?;
 
+    kprintln!("Filesystem initialized successfully on drive {} with {} blocks", drive, total_blocks);
     Ok(())
 }

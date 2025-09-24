@@ -1,343 +1,124 @@
-//! # Galleon2 Filesystem Library
-//!
-//! This library provides high-level operations for working with a custom filesystem in PrismaOS.
-//! It serves as the main interface between applications and the underlying filesystem structures,
-//! handling boot block initialization, validation, and metadata management.
-//!
-//! ## Overview
-//! - **Boot block creation**: Initialize a new filesystem on a storage device.
-//! - **Validation**: Check for the presence and integrity of the filesystem using a magic string.
-//! - **Metadata access**: Read and update boot block information, such as free block count and version.
-//! - **Block allocation**: Allocate and deallocate blocks for file storage.
-//! - **IDE integration**: Uses low-level IDE/ATA disk I/O for all operations.
-//!
-//! ## Dependencies
-//! - Relies on an IDE (Integrated Drive Electronics) interface module for disk I/O.
-//! - Uses a `super_block` module for boot block structure and serialization.
-//!
-//! ## Example Usage
-//! ```rust
-//! // Initialize a new filesystem on drive 0
-//! galleon2::write_super_block(0).unwrap();
-//!
-//! // Validate the filesystem
-//! if galleon2::validate_super_block(0) {
-//!     println!("Valid filesystem found!");
-//! } else {
-//!     println!("No valid filesystem detected");
-//! }
-//!
-//! // Read boot block information
-//! if let Some(super_block) = galleon2::read_super_block(0) {
-//!     println!("Filesystem version: {}", super_block.version);
-//!     println!("Free blocks: {}", super_block.free_block_count);
-//! }
-//! ```
-
 #![no_std]
 
-// Import all symbols from the IDE interface module
-// This provides low-level disk I/O functions like ide_read_sectors and ide_write_sectors
-pub use ide::{ide_write_sectors, ide_read_sectors, return_ide_size_bytes};
+pub use ide::{ide_write_sectors, ide_read_sectors, return_drive_size_bytes, IdeError, IdeResult};
 
 extern crate alloc;
 
 pub mod fs;
-
 mod file;
-mod super_block;
 mod super_block;
 use super_block::SuperBlock;
 
-
-
 /// The result type for all filesystem operations in this library.
-///
-/// This is a convenience alias for `Result<T, FilesystemError>`.
 pub type FilesystemResult<T> = Result<T, FilesystemError>;
 
 /// Error types for filesystem operations.
-///
-/// This enum represents all possible errors that can occur when interacting with the filesystem.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FilesystemError {
-    /// IDE read/write operation failed. Contains the error code returned by the IDE driver.
-    IdeError(i32),
+    /// IDE operation failed with specific error
+    Ide(IdeError),
     /// The boot block is invalid or the magic string does not match.
     InvalidBootBlock,
     /// The specified drive was not found or is not accessible.
     DriveNotFound,
     /// There is not enough free space to allocate the requested number of blocks.
     InsufficientSpace,
+    /// Invalid parameter provided
+    InvalidParameter,
 }
 
-/// Writes a new boot block to the specified drive, initializing the filesystem.
-///
-/// # Arguments
-/// * `drive_num` - The drive number to write the boot block to.
-///
-/// # Returns
-/// * `Ok(())` if the boot block was written successfully.
-/// * `Err(FilesystemError)` if the write operation failed.
-///
-/// # Example
-/// ```
-/// galleon2::write_super_block(0).unwrap();
-/// ```
-pub fn write_super_block(drive_num: u8, total_blocks: u64, block_size: u32, root_dir_block: u64) -> bool{
-    // Create a new boot block with 100,000 total blocks and root directory at block 1
+impl From<IdeError> for FilesystemError {
+    fn from(ide_error: IdeError) -> Self {
+        match ide_error {
+            IdeError::DriveNotFound => FilesystemError::DriveNotFound,
+            _ => FilesystemError::Ide(ide_error),
+        }
+    }
+}
+
+/// Write a new super block to the specified drive with proper error handling
+pub fn write_super_block(
+    drive_num: u8, 
+    total_blocks: u64, 
+    block_size: u32, 
+    root_dir_block: u64
+) -> FilesystemResult<()> {
     let super_block = SuperBlock::new(block_size, total_blocks, root_dir_block);
-    // Serialize the boot block into a 512-byte sector format
     let sector = super_block.as_sector();
-    // Write the boot block to sector 0 (boot sector) of the specified drive
-    // Parameters: drive_number, starting_sector, sector_count, data_buffer
-    let result = ide_write_sectors(drive_num, 1, 1, sector.as_ptr() as *const _);
-    if result == 0 {
-        true
-    } else {
-        false
-    }
+    
+    // Write to sector 0 (boot sector)
+    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    Ok(())
 }
 
-/// Validates the boot block on the specified drive.
-///
-/// This function checks if the boot block contains the correct magic string and is structurally valid.
-///
-/// # Arguments
-/// * `drive_num` - The drive number to validate.
-///
-/// # Returns
-/// * `true` if the boot block is valid and the filesystem is present.
-/// * `false` if the boot block is invalid or the read operation failed.
-///
-/// # Example
-/// ```
-/// if galleon2::validate_super_block(0) {
-///     println!("Filesystem is valid");
-/// }
-/// ```
-pub fn validate_super_block(drive_num: u8) -> bool {
-    // Allocate buffer for reading the boot sector
+/// Validate the super block on the specified drive with proper error handling
+pub fn validate_super_block(drive_num: u8) -> FilesystemResult<()> {
     let mut sector = [0u8; 512];
-    // Read sector 0 (boot sector) from the specified drive
-    // IDE driver signature: ide_read_sectors(drive, numsects, lba, buf)
-    // Fixed parameter order to match your IDE driver
-    let result = ide_read_sectors(drive_num, 1, 1, sector.as_mut_ptr() as *mut _);
-    if result != 0 {
-        // Read failed, return false
-        return false;
-    }
-    // Validate the magic string in the boot block
-    SuperBlock::is_valid(&sector)
-}
-
-/// Reads the boot block from the specified drive.
-///
-/// # Arguments
-/// * `drive_num` - The drive number to read from.
-///
-/// # Returns
-/// * `Some(SuperBlock)` if the boot block is valid and was read successfully.
-/// * `None` if the boot block is invalid or the read operation failed.
-///
-/// # Example
-/// ```
-/// if let Some(bb) = galleon2::read_super_block(0) {
-///     println!("Version: {}", bb.version);
-/// }
-/// ```
-pub fn read_super_block(drive_num: u8) -> Option<SuperBlock> {
-    // Allocate buffer for reading the boot sector
-    let mut sector = [0u8; 512];
-    // Read sector 0 (boot sector) from the specified drive
-    // IDE driver signature: ide_read_sectors(drive, numsects, lba, buf)
-    let result = ide_read_sectors(drive_num, 1, 1, sector.as_mut_ptr() as *mut _);
-    if result != 0 {
-        // Read failed, return None
-        return None;
-    }
-    // Check if it's valid first
+    
+    // Read sector 0 (boot sector)
+    ide_read_sectors(drive_num, 1, 0, sector.as_mut_ptr() as *mut _)?;
+    
     if SuperBlock::is_valid(&sector) {
-        // Deserialize the sector into a SuperBlock structure
-        Some(SuperBlock::from_sector(&sector))
+        Ok(())
     } else {
-        None
+        Err(FilesystemError::InvalidBootBlock)
     }
 }
 
-/// Reads the boot block from the specified drive, returning a result type.
-///
-/// # Arguments
-/// * `drive_num` - The drive number to read from.
-///
-/// # Returns
-/// * `Ok(SuperBlock)` if the boot block is valid and was read successfully.
-/// * `Err(FilesystemError)` if the boot block is invalid or the read operation failed.
-///
-/// # Example
-/// ```
-/// let bb = galleon2::read_super_block_result(0)?;
-/// ```
-pub fn read_super_block_result(drive_num: u8) -> FilesystemResult<SuperBlock> {
-    // Allocate buffer for reading the boot sector
+/// Read the super block from the specified drive with proper error handling
+pub fn read_super_block(drive_num: u8) -> FilesystemResult<SuperBlock> {
     let mut sector = [0u8; 512];
-    // Read sector 0 (boot sector) from the specified drive
-    let result = ide_read_sectors(drive_num, 1, 1, sector.as_mut_ptr() as *mut _);
-    if result != 0 {
-        return Err(FilesystemError::IdeError(result as i32));
-    }
-    // Check if it's valid
+    
+    // Read sector 0 (boot sector)
+    ide_read_sectors(drive_num, 1, 0, sector.as_mut_ptr() as *mut _)?;
+    
     if SuperBlock::is_valid(&sector) {
-        // Deserialize the sector into a SuperBlock structure
         Ok(SuperBlock::from_sector(&sector))
     } else {
         Err(FilesystemError::InvalidBootBlock)
     }
 }
 
-/// Updates the free block count in the boot block of the filesystem.
-///
-/// This function reads the current boot block, updates the free block count,
-/// and writes the updated boot block back to the drive.
-///
-/// # Arguments
-/// * `drive_num` - The drive number where the filesystem is located.
-/// * `new_free_count` - The new free block count to set.
-///
-/// # Returns
-/// * `Ok(())` if the update was successful.
-/// * `Err(FilesystemError)` if there was an error during the update.
-///
-/// # Errors
-/// * `FilesystemError::InvalidBootBlock` if the boot block is invalid.
-/// * `FilesystemError::IdeError` if there was an error writing to the drive.
-///
-/// # Example
-/// ```
-/// galleon2::update_free_block_count(0, 50000).unwrap();
-/// ```
+/// Update the free block count in the super block with proper error handling
 pub fn update_free_block_count(drive_num: u8, new_free_count: u64) -> FilesystemResult<()> {
-    // Read current boot block
-    let mut super_block = read_super_block_result(drive_num)?;
-    // Update free block count
+    let mut super_block = read_super_block(drive_num)?;
     super_block.set_free_block_count(new_free_count);
-    // Write back to drive
+    
     let sector = super_block.as_sector();
-    let result = ide_write_sectors(drive_num, 1, 1, sector.as_ptr() as *const _);
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(FilesystemError::IdeError(result as i32))
-    }
+    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    Ok(())
 }
 
-/// Allocates a specified number of blocks in the filesystem.
-///
-/// This function reads the current boot block, attempts to allocate the specified
-/// number of blocks, and writes the updated boot block back to the drive.
-///
-/// # Arguments
-/// * `drive_num` - The drive number where the filesystem is located.
-/// * `block_count` - The number of blocks to allocate.
-///
-/// # Returns
-/// * `Ok(())` if the allocation was successful.
-/// * `Err(FilesystemError)` if there was an error during allocation.
-///
-/// # Errors
-/// * `FilesystemError::InsufficientSpace` if there are not enough free blocks.
-/// * `FilesystemError::IdeError` if there was an error writing to the drive.
-///
-/// # Example
-/// ```
-/// let result = galleon2::allocate_blocks(0, 10);
-/// if let Err(e) = result {
-///   println!("Failed to allocate blocks: {:?}", e);
-/// }
-/// ```
+/// Allocate a specified number of blocks in the filesystem with proper error handling
 pub fn allocate_blocks(drive_num: u8, block_count: u64) -> FilesystemResult<()> {
-    // Read current boot block
-    let mut super_block = read_super_block_result(drive_num)?;
-    // Try to allocate blocks
+    let mut super_block = read_super_block(drive_num)?;
+    
     if !super_block.allocate_blocks(block_count) {
         return Err(FilesystemError::InsufficientSpace);
     }
-    // Write back to drive
+    
     let sector = super_block.as_sector();
-    let result = ide_write_sectors(drive_num, 0, 1, sector.as_ptr() as *const _);
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(FilesystemError::IdeError(result as i32))
-    }
+    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    Ok(())
 }
 
-/// Deallocates a specified number of blocks in the filesystem.
-///
-/// This function reads the current boot block, increases the free block count by the specified
-/// number, and writes the updated boot block back to the drive.
-///
-/// # Arguments
-/// * `drive_num` - The drive number where the filesystem is located.
-/// * `block_count` - The number of blocks to deallocate.
-///
-/// # Returns
-/// * `Ok(())` if the deallocation was successful.
-/// * `Err(FilesystemError)` if there was an error during deallocation.
-///
-/// # Example
-/// ```
-/// galleon2::deallocate_blocks(0, 5).unwrap();
-/// ```
+/// Deallocate a specified number of blocks in the filesystem with proper error handling
 pub fn deallocate_blocks(drive_num: u8, block_count: u64) -> FilesystemResult<()> {
-    // Read current boot block
-    let mut super_block = read_super_block_result(drive_num)?;
-    // Deallocate blocks
+    let mut super_block = read_super_block(drive_num)?;
     super_block.deallocate_blocks(block_count);
-    // Write back to drive
+    
     let sector = super_block.as_sector();
-    let result = ide_write_sectors(drive_num, 0, 1, sector.as_ptr() as *const _);
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(FilesystemError::IdeError(result as i32))
-    }
+    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    Ok(())
 }
 
-/// Retrieves basic information about the filesystem on the specified drive.
-///
-/// # Arguments
-/// * `drive_num` - The drive number to query.
-///
-/// # Returns
-/// * `Some((version, total_blocks, free_block_count, block_size))` if the filesystem is valid.
-/// * `None` if the filesystem is not present or invalid.
-///
-/// # Example
-/// ```
-/// if let Some((ver, total, free, size)) = galleon2::get_filesystem_info(0) {
-///     println!("Version: {ver}, Total: {total}, Free: {free}, Block size: {size}");
-/// }
-/// ```
-pub fn get_filesystem_info(drive_num: u8) -> Option<(u32, u64, u64, u32)> {
-    read_super_block(drive_num).map(|bb| (bb.version, bb.total_blocks, bb.free_block_count, bb.block_size))
+/// Get filesystem information with proper error handling
+pub fn get_filesystem_info(drive_num: u8) -> FilesystemResult<(u32, u64, u64, u32)> {
+    let super_block = read_super_block(drive_num)?;
+    Ok((super_block.version, super_block.total_blocks, super_block.free_block_count, super_block.block_size))
 }
 
-/// Checks if a valid filesystem is present on the specified drive.
-///
-/// # Arguments
-/// * `drive_num` - The drive number to check.
-///
-/// # Returns
-/// * `true` if a valid filesystem is present.
-/// * `false` otherwise.
-///
-/// # Example
-/// ```
-/// if galleon2::has_filesystem(0) {
-///     println!("Filesystem detected");
-/// }
-/// ```
+/// Check if a valid filesystem is present on the specified drive with proper error handling
 pub fn has_filesystem(drive_num: u8) -> bool {
-    validate_super_block(drive_num)
+    validate_super_block(drive_num).is_ok()
 }

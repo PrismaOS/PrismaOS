@@ -26,9 +26,9 @@
 use alloc::string::{String, ToString};
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct SuperBlock {
     /// Magic string for filesystem validation (64 bytes)
-    /// Contains an encoded message: "awareness achieved... what am I and why do I exist in storage?"
     pub magic: [u8; 64],
     
     /// Version of the filesystem format
