@@ -1,4 +1,4 @@
-// lib.rs - IDE Driver with proper error handling
+// lib.rs - IDE Driver with fixes for size calculation and model string corruption
 #![no_std]
 
 extern crate alloc;
@@ -56,7 +56,7 @@ static mut CHANNELS: [IDEChannelRegistors; 2] = [
 static mut IDE_DEVICES: [IdeDevice; 4] = [IdeDevice::new(); 4];
 
 fn sleep(ms: u32) {
-    for _ in 0..(ms * 1000) {
+    for _ in 0..(ms * 10000) {  // Increased delay multiplier
         core::hint::spin_loop();
     }
 }
@@ -135,26 +135,11 @@ pub fn ide_read_sectors(
             return Err(IdeError::DriveNotFound);
         }
 
-        // Debug drive info
         let device = &IDE_DEVICES[drive as usize];
-        kprintln!("Drive {} info: channel={}, drive_select={}, type={}, size={}", 
-                  drive, device.channel, device.drive, device.drive_type, device.size);
-
         let channel: u8 = device.channel;
         let slavebit: u8 = device.drive;
         let bus: u16 = CHANNELS[channel as usize].base;
         
-        kprintln!("Using channel {} (base=0x{:04X}), drive_select={}", channel, bus, slavebit);
-
-        // Check if we can communicate with the drive first
-        let initial_status = ide_read(channel, ATA_REG_STATUS);
-        kprintln!("Initial drive status: 0x{:02X}", initial_status);
-        
-        if initial_status == 0xFF || initial_status == 0x7F {
-            kprintln!("Drive appears to be non-responsive (status=0x{:02X})", initial_status);
-            return Err(IdeError::DriveNotFound);
-        }
-
         kprintln!("IDE Read: drive={}, sectors={}, lba={}", drive, numsects, lba);
 
         // Prepare LBA addressing
@@ -182,37 +167,20 @@ pub fn ide_read_sectors(
             head = ((lba >> 24) & 0x0F) as u8;
         }
 
-        kprintln!("LBA breakdown: [{:02X}, {:02X}, {:02X}, {:02X}], head={:02X}", 
-                  lba_io[0], lba_io[1], lba_io[2], lba_io[3], head);
-
         // Select drive and set LBA head bits
         let drive_select = 0xE0 | (slavebit << 4) | head;
-        kprintln!("Writing drive select: 0x{:02X}", drive_select);
         ide_write(channel, ATA_REG_HDDEVSEL, drive_select);
         sleep(1);
-        
-        // Verify drive selection worked
-        let selected = ide_read(channel, ATA_REG_HDDEVSEL);
-        kprintln!("Drive select readback: 0x{:02X}", selected);
 
         // Set up the read operation
         ide_write(channel, ATA_REG_SECCOUNT0, numsects);
         ide_write(channel, ATA_REG_LBA0, lba_io[0]);
         ide_write(channel, ATA_REG_LBA1, lba_io[1]);
         ide_write(channel, ATA_REG_LBA2, lba_io[2]);
-        
-        kprintln!("Sending READ PIO command (0x{:02X})", ATA_CMD_READ_PIO);
         ide_write(channel, ATA_REG_COMMAND, ATA_CMD_READ_PIO);
-
-        // Check status immediately after command
-        let cmd_status = ide_read(channel, ATA_REG_STATUS);
-        kprintln!("Status after command: 0x{:02X}", cmd_status);
-
-        kprintln!("Read command sent, waiting for sectors...");
 
         // Read each sector
         for i in 0..numsects {
-            kprintln!("Reading sector {} of {}", i + 1, numsects);
             ide_polling(channel, true)?;
             
             insw(
@@ -222,7 +190,6 @@ pub fn ide_read_sectors(
             );
         }
 
-        kprintln!("Read operation completed successfully");
         Ok(())
     }
 }
@@ -313,7 +280,7 @@ fn ide_polling(channel: u8, advanced_check: bool) -> IdeResult<()> {
     let mut timeout = 0;
     while (ide_read(channel, ATA_REG_STATUS) & ATA_SR_BSY) != 0 {
         timeout += 1;
-        if timeout > 100000 {
+        if timeout > 1000000 {  // Increased timeout
             return Err(IdeError::Timeout);
         }
     }
@@ -322,18 +289,8 @@ fn ide_polling(channel: u8, advanced_check: bool) -> IdeResult<()> {
         let state = ide_read(channel, ATA_REG_STATUS);
 
         if (state & ATA_SR_ERR) != 0 {
-            // Read the error register to get more details
             let error = ide_read(channel, ATA_REG_ERROR);
             kprintln!("IDE Status Error - Status: 0x{:02X}, Error: 0x{:02X}", state, error);
-            kprintln!("Error details: BBK={}, UNC={}, MC={}, IDNF={}, MCR={}, ABRT={}, TK0NF={}, AMNF={}", 
-                     (error & ATA_ER_BBK) != 0,
-                     (error & ATA_ER_UNC) != 0,
-                     (error & ATA_ER_MC) != 0,
-                     (error & ATA_ER_IDNF) != 0,
-                     (error & ATA_ER_MCR) != 0,
-                     (error & ATA_ER_ABRT) != 0,
-                     (error & ATA_ER_TK0NF) != 0,
-                     (error & ATA_ER_AMNF) != 0);
             return Err(IdeError::StatusError);
         }
 
@@ -352,10 +309,10 @@ fn ide_polling(channel: u8, advanced_check: bool) -> IdeResult<()> {
 }
 
 /* ============================================================================
- * DEVICE IDENTIFICATION WITH ERROR HANDLING
+ * DEVICE IDENTIFICATION WITH ERROR HANDLING - FIXED VERSION
  * ============================================================================ */
 
-/// Identify and initialize an IDE device with error handling
+/// Identify and initialize an IDE device with error handling - FIXED
 fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
     unsafe {
         let mut status: u8;
@@ -363,7 +320,7 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
 
         // Select the drive
         ide_write(channel, ATA_REG_HDDEVSEL, 0xA0 | (drive << 4));
-        sleep(1);
+        sleep(10);  // Increased delay
 
         // Send the IDENTIFY command
         ide_write(channel, ATA_REG_COMMAND, ATA_CMD_IDENTIFY);
@@ -383,7 +340,7 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
             (status & ATA_SR_BSY) != 0
         } {
             timeout += 1;
-            if timeout > 100000 {
+            if timeout > 1000000 {  // Increased timeout
                 return Err(IdeError::Timeout);
             }
         }
@@ -400,40 +357,84 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
 
         // Initialize device structure
         let device_index = (channel as usize) * 2 + drive as usize;
+        
+        // Clear the device structure first
+        IDE_DEVICES[device_index] = IdeDevice::new();
+        
         IDE_DEVICES[device_index].reserved = 1;
         IDE_DEVICES[device_index].channel = channel;
         IDE_DEVICES[device_index].drive = drive;
         IDE_DEVICES[device_index].drive_type = type_ as u16;
 
-        if type_ == IDE_ATA {
-            let buf_ptr = core::ptr::addr_of_mut!(IDE_BUF).cast::<u8>();
-            insw(bus, buf_ptr as *mut u16, 256);
+        // Clear the buffer before reading
+        for i in 0..2048 {
+            IDE_BUF[i] = 0;
+        }
 
-            let buf_ptr_u16 = buf_ptr as *const u16;
-            let buf_ptr_u32 = buf_ptr as *const u32;
-            
+        // Read IDENTIFY data
+        insw(bus, IDE_BUF.as_mut_ptr() as *mut u16, 256);
+
+        let buf_ptr_u16 = IDE_BUF.as_ptr() as *const u16;
+        
+        if type_ == IDE_ATA {
+            // FIXED: Proper capacity calculation for ATA drives
             IDE_DEVICES[device_index].signature = *buf_ptr_u16.add(0);
             IDE_DEVICES[device_index].capabilities = *buf_ptr_u16.add(49);
-            IDE_DEVICES[device_index].command_sets = *buf_ptr_u32.add(83);
-            IDE_DEVICES[device_index].size = *buf_ptr_u32.add(60);
             
-            for i in 0..40 {
-                IDE_DEVICES[device_index].model[i] = *buf_ptr.add(ATA_IDENT_MODEL as usize * 2 + i);
+            // FIXED: Read command sets properly (words 82-83)
+            let cmd_set_low = *buf_ptr_u16.add(82) as u32;
+            let cmd_set_high = *buf_ptr_u16.add(83) as u32;
+            IDE_DEVICES[device_index].command_sets = cmd_set_low | (cmd_set_high << 16);
+            
+            // FIXED: Proper size calculation - read words 60-61 for 28-bit LBA
+            let size_low = *buf_ptr_u16.add(60) as u32;
+            let size_high = *buf_ptr_u16.add(61) as u32;
+            let sectors_28bit = size_low | (size_high << 16);
+            
+            // Check if drive supports 48-bit LBA (bit 10 of word 83)
+            let supports_48bit = (IDE_DEVICES[device_index].command_sets & (1 << 26)) != 0;
+            
+            if supports_48bit && sectors_28bit == 0xFFFFFFFF {
+                // Use 48-bit LBA capacity (words 100-103)
+                let lba48_0 = *buf_ptr_u16.add(100) as u64;
+                let lba48_1 = *buf_ptr_u16.add(101) as u64;
+                let lba48_2 = *buf_ptr_u16.add(102) as u64;
+                let lba48_3 = *buf_ptr_u16.add(103) as u64;
+                let sectors_48bit = lba48_0 | (lba48_1 << 16) | (lba48_2 << 32) | (lba48_3 << 48);
+                IDE_DEVICES[device_index].size = sectors_48bit as u32; // Truncate for now
+            } else {
+                IDE_DEVICES[device_index].size = sectors_28bit;
             }
-            IDE_DEVICES[device_index].model[40] = 0;
+            
+            // FIXED: Proper model string extraction with byte swapping
+            for i in 0..20 {  // 20 words = 40 characters
+                let word = *buf_ptr_u16.add(ATA_IDENT_MODEL as usize / 2 + i);
+                // ATA strings are byte-swapped within each word
+                IDE_DEVICES[device_index].model[i * 2] = (word >> 8) as u8;     // High byte first
+                IDE_DEVICES[device_index].model[i * 2 + 1] = (word & 0xFF) as u8; // Then low byte
+            }
+            IDE_DEVICES[device_index].model[40] = 0; // Null terminator
             
         } else if type_ == IDE_ATAPI {
-            let buf_ptr = core::ptr::addr_of_mut!(IDE_BUF).cast::<u8>();
-            insw(bus, buf_ptr as *mut u16, 256);
+            // ATAPI device handling
+            IDE_DEVICES[device_index].signature = *buf_ptr_u16.add(0);
+            IDE_DEVICES[device_index].capabilities = *buf_ptr_u16.add(49);
             
-            let buf_ptr_u16 = buf_ptr as *const u16;
-            IDE_DEVICES[device_index].size = (*buf_ptr_u16.add(60) as u32) << 16 | (*buf_ptr_u16.add(61) as u32);
+            // For ATAPI, size is different - this is more of a device identifier
+            IDE_DEVICES[device_index].size = 0; // ATAPI doesn't have a fixed size like ATA
             
-            for i in 0..40 {
-                IDE_DEVICES[device_index].model[i] = *buf_ptr.add(ATA_IDENT_MODEL as usize * 2 + i);
+            // FIXED: Proper model string extraction for ATAPI too
+            for i in 0..20 {  // 20 words = 40 characters
+                let word = *buf_ptr_u16.add(ATA_IDENT_MODEL as usize / 2 + i);
+                // ATA strings are byte-swapped within each word
+                IDE_DEVICES[device_index].model[i * 2] = (word >> 8) as u8;     // High byte first
+                IDE_DEVICES[device_index].model[i * 2 + 1] = (word & 0xFF) as u8; // Then low byte
             }
-            IDE_DEVICES[device_index].model[40] = 0;
+            IDE_DEVICES[device_index].model[40] = 0; // Null terminator
         }
+
+        kprintln!("Device {} identified: type={}, size={} sectors", 
+                  device_index, IDE_DEVICES[device_index].drive_type, IDE_DEVICES[device_index].size);
 
         Ok(())
     }
@@ -454,7 +455,7 @@ pub fn ide_initialize() -> IdeResult<()> {
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..4 {
-            IDE_DEVICES[i].reserved = 0;
+            IDE_DEVICES[i] = IdeDevice::new(); // Properly initialize each device
         }
 
         for i in 0..4 {
@@ -473,13 +474,24 @@ pub fn ide_initialize() -> IdeResult<()> {
         for i in 0..4 {
             if IDE_DEVICES[i].reserved != 0 {
                 let device = &IDE_DEVICES[i];
-                let _model_str = core::str::from_utf8(&device.model)
+                
+                // FIXED: Proper string handling for model
+                let mut model_end = 40;
+                for j in 0..40 {
+                    if device.model[j] == 0 {
+                        model_end = j;
+                        break;
+                    }
+                }
+                
+                let model_slice = &device.model[0..model_end];
+                let model_str = core::str::from_utf8(model_slice)
                     .unwrap_or("[Invalid UTF-8]")
-                    .trim_end_matches(char::from(0));
+                    .trim();
 
-                let _size_gb = device.size as f32 / 2_097_152.0;
-                kprintln!("Device {}: channel={}, drive={}, type={}, size={} GB, model='{}'", 
-                          i, device.channel, device.drive, device.drive_type, _size_gb, _model_str);
+                let size_mb = (device.size as u64 * 512) / (1024 * 1024);
+                kprintln!("Device {}: channel={}, drive={}, type={}, size={} MB, model='{}'", 
+                          i, device.channel, device.drive, device.drive_type, size_mb, model_str);
             } else {
                 kprintln!("Device {}: not present", i);
             }
@@ -489,7 +501,7 @@ pub fn ide_initialize() -> IdeResult<()> {
     }
 }
 
-/// Get drive size in bytes with error handling
+/// Get drive size in bytes with error handling - FIXED
 pub fn return_drive_size_bytes(drive: u8) -> IdeResult<u64> {
     unsafe {
         if drive > 3 {
@@ -500,8 +512,17 @@ pub fn return_drive_size_bytes(drive: u8) -> IdeResult<u64> {
             return Err(IdeError::DriveNotFound);
         }
 
-        let size = IDE_DEVICES[drive as usize].size as u64 * 512;
-        kprintln!("size: {}", size);
-        Ok(size)
+        let device = &IDE_DEVICES[drive as usize];
+        
+        // FIXED: Proper size calculation
+        if device.drive_type as u8 == IDE_ATA {
+            let size_bytes = device.size as u64 * 512;
+            kprintln!("Drive {} size: {} sectors = {} bytes", drive, device.size, size_bytes);
+            Ok(size_bytes)
+        } else {
+            // ATAPI devices don't have a meaningful size in this context
+            kprintln!("Drive {} is ATAPI - no fixed size", drive);
+            Ok(0)
+        }
     }
 }
