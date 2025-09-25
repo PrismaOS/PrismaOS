@@ -1,5 +1,3 @@
-use core::ffi::c_void;
-
 use ide::{ide_write_sectors, IdeResult};
 use lib_kernel::kprintln;
 
@@ -8,12 +6,13 @@ use crate::{
     write_super_block, FilesystemError, FilesystemResult
 };
 
-pub fn zero_out_sector(drive: u8, sector: u64) -> IdeResult<()> {
-    let zero_buf = [0u8; 512];
-    let res = ide_write_sectors(drive, 1, sector as u32, zero_buf.as_ptr() as *const c_void);
+pub fn zero_out_sectors(drive: u8, start_sector: u64, sector_count: u8) -> IdeResult<()> {
+    // Create buffer for 50 sectors (50 * 512 = 25,600 bytes)
+    let zero_buf = [0u8; 50 * 512];
+    let res = ide_write_sectors(drive, sector_count, start_sector as u32, &zero_buf);
     match &res {
-        Ok(_) => kprintln!("Zeroed sector {} on drive {}", sector, drive),
-        Err(e) => kprintln!("Failed to zero sector {} on drive {}: {:?}", sector, drive, e),
+        Ok(_) => {},
+        Err(e) => kprintln!("Failed to zero {} sectors starting at sector {} on drive {}: {:?}", sector_count, start_sector, drive, e),
     }
     res
 }
@@ -29,17 +28,23 @@ pub fn init_fs(drive: u8) -> FilesystemResult<()> {
     }
 
     let disk_sectors = disk_size_bytes / 512;
-    for sector in 0..disk_sectors {
-        let res = zero_out_sector(drive, sector);
-        match res {
-            Ok(_) => {} // already printed success inside zero_out_sector
-            Err(e) => {
-                kprintln!("Error zeroing sector {}: {:?}", sector, e);
-                // Depending on behavior, could return Err here or continue
-                return Err(FilesystemError::WriteError);
-            }
-        }
-    }
+    let mut sector = 0;
+    
+    //while sector < disk_sectors {
+    //    let sectors_remaining = disk_sectors - sector;
+    //    let sectors_to_zero = if sectors_remaining >= 50 { 50 } else { sectors_remaining as u8 };
+    //    
+    //    let res = zero_out_sectors(drive, sector, sectors_to_zero);
+    //    match res {
+    //        Ok(_) => {} // already printed success inside zero_out_sectors
+    //        Err(e) => {
+    //            kprintln!("Error zeroing sectors starting at {}: {:?}", sector, e);
+    //            return Err(FilesystemError::WriteError);
+    //        }
+    //    }
+    //    
+    //    sector += sectors_to_zero as u64;
+    //}
 
     let block_size: u32 = 4096;
     let total_blocks = disk_size_bytes / block_size as u64;

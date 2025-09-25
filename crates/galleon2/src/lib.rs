@@ -50,7 +50,7 @@ pub fn write_super_block(
     let sector = super_block.as_sector();
     
     // Write to sector 0 (boot sector)
-    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    ide_write_sectors(drive_num, 1, 0, &sector)?;
     Ok(())
 }
 
@@ -59,7 +59,7 @@ pub fn validate_super_block(drive_num: u8) -> FilesystemResult<()> {
     let mut sector = [0u8; 512];
     
     // Read sector 0 (boot sector)
-    ide_read_sectors(drive_num, 1, 0, sector.as_mut_ptr() as *mut _)?;
+    ide_read_sectors(drive_num, 1, 0, &mut sector)?;
     
     if SuperBlock::is_valid(&sector) {
         Ok(())
@@ -68,13 +68,12 @@ pub fn validate_super_block(drive_num: u8) -> FilesystemResult<()> {
     }
 }
 
-
 /// Read the super block from the specified drive with proper error handling
 pub fn read_super_block(drive_num: u8) -> FilesystemResult<SuperBlock> {
     let mut sector = [0u8; 512];
     
     // Read sector 0 (boot sector)
-    ide_read_sectors(drive_num, 1, 0, sector.as_mut_ptr() as *mut _)?;
+    ide_read_sectors(drive_num, 1, 0, &mut sector)?;
     
     if SuperBlock::is_valid(&sector) {
         Ok(SuperBlock::from_sector(&sector))
@@ -89,7 +88,7 @@ pub fn update_free_block_count(drive_num: u8, new_free_count: u64) -> Filesystem
     super_block.set_free_block_count(new_free_count);
     
     let sector = super_block.as_sector();
-    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    ide_write_sectors(drive_num, 1, 0, &sector)?;
     Ok(())
 }
 
@@ -102,7 +101,7 @@ pub fn allocate_blocks(drive_num: u8, block_count: u64) -> FilesystemResult<()> 
     }
     
     let sector = super_block.as_sector();
-    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    ide_write_sectors(drive_num, 1, 0, &sector)?;
     Ok(())
 }
 
@@ -112,7 +111,7 @@ pub fn deallocate_blocks(drive_num: u8, block_count: u64) -> FilesystemResult<()
     super_block.deallocate_blocks(block_count);
     
     let sector = super_block.as_sector();
-    ide_write_sectors(drive_num, 1, 0, sector.as_ptr() as *const _)?;
+    ide_write_sectors(drive_num, 1, 0, &sector)?;
     Ok(())
 }
 

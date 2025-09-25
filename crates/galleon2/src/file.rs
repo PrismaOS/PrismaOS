@@ -16,7 +16,7 @@ pub fn create_file(drive: u8, name: String, contents: Option<String>) -> Filesys
             let next_sector = next_block * sectors_per_block as u64;
             
             let mut sector_buffer = [0u8; 512];
-            ide_read_sectors(drive, 1, next_sector as u32, sector_buffer.as_mut_ptr() as *mut _)?;
+            ide_read_sectors(drive, 1, next_sector as u32, &mut sector_buffer)?;
             
             let is_zeroed = sector_buffer.iter().all(|&b| b == 0);
             kprintln!("Sector {} is zeroed: {}", next_sector, is_zeroed);
@@ -36,7 +36,7 @@ pub fn create_file(drive: u8, name: String, contents: Option<String>) -> Filesys
             }
             
             kprintln!("Writing file data");
-            ide_write_sectors(drive, 1, next_sector as u32, write_buffer.as_ptr() as *const _)?;
+            ide_write_sectors(drive, 1, next_sector as u32, &write_buffer)?;
             kprintln!("File written successfully");
 
             Ok(())
