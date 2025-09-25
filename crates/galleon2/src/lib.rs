@@ -26,6 +26,8 @@ pub enum FilesystemError {
     InsufficientSpace,
     /// Invalid parameter provided
     InvalidParameter,
+    /// Disk failed to write
+    WriteError
 }
 
 impl From<IdeError> for FilesystemError {
