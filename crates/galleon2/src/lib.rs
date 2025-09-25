@@ -5,8 +5,8 @@ pub use ide::{ide_write_sectors, ide_read_sectors, return_drive_size_bytes, IdeE
 extern crate alloc;
 
 pub mod fs;
-mod file;
-mod mft;
+pub mod file;
+mod indexing;
 mod super_block;
 use super_block::SuperBlock;
 

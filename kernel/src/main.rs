@@ -22,6 +22,7 @@
 #![allow(warnings)]
 
 use core::panic::PanicInfo;
+use alloc::string::ToString;
 use lib_kernel::{consts::BASE_REVISION, kprintln, scrolling_text};
 
 extern crate alloc;
@@ -39,7 +40,7 @@ mod init;
 mod utils;
 
 use ahci;
-use galleon2::fs::init_fs;
+use galleon2::{fs::init_fs, file::create_file};
 use luminal;
 use pci::init_pci;
 use usb;
@@ -83,6 +84,8 @@ unsafe extern "C" fn kmain() -> ! {
     // +--------------------------------+
     ide_initialize();
     kprintln!("{:?}", init_fs(0));
+
+    create_file(0, "Hello.txt".to_string(), Some("Hello world!".to_string()));
 
     // Initialize USB subsystem
     init_usb_controllers();
