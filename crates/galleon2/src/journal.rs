@@ -320,11 +320,21 @@ impl JournalManager {
 
     fn write_log_record(&self, record: &LogRecord) -> FilesystemResult<()> {
         let serialized = record.serialize();
+        if serialized.is_empty() {
+            return Err(FilesystemError::InvalidParameter);
+        }
+
         let sectors_needed = (serialized.len() + 511) / 512;
 
         // Calculate journal position (circular buffer)
-        let journal_offset = (record.sequence_number % (self.journal_size_sectors * 512 / serialized.len() as u64))
-                            * serialized.len() as u64 / 512;
+        // Ensure we don't divide by zero and have a reasonable record size
+        let record_size = serialized.len().max(64) as u64; // Minimum 64 bytes
+        let max_records_in_journal = (self.journal_size_sectors * 512) / record_size;
+        let journal_offset = if max_records_in_journal > 0 {
+            (record.sequence_number % max_records_in_journal) * record_size / 512
+        } else {
+            0 // Fallback if journal is too small
+        };
         let write_sector = self.journal_start_sector + journal_offset;
 
         // Prepare sector-aligned data

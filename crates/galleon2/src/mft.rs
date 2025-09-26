@@ -61,18 +61,18 @@ impl RecordFlags {
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct MftRecordHeader {
-    pub signature: [u8; 4],           // "FILE"
-    pub update_sequence_offset: u16,  // Offset to update sequence
-    pub update_sequence_size: u16,    // Size of update sequence
+    pub signature: [u8; 4],            // "FILE"
+    pub update_sequence_offset: u16,   // Offset to update sequence
+    pub update_sequence_size: u16,     // Size of update sequence
     pub log_file_sequence_number: u64, // Journal sequence number
-    pub sequence_number: u16,         // Record sequence number
-    pub hard_link_count: u16,         // Number of hard links
-    pub first_attribute_offset: u16,  // Offset to first attribute
-    pub flags: u16,                   // Record flags
-    pub bytes_in_use: u32,            // Bytes used in this record
-    pub bytes_allocated: u32,         // Bytes allocated for this record
-    pub base_file_record: u64,        // Base file record (for attribute lists)
-    pub next_attribute_id: u16,       // Next attribute ID
+    pub sequence_number: u16,          // Record sequence number
+    pub hard_link_count: u16,          // Number of hard links
+    pub first_attribute_offset: u16,   // Offset to first attribute
+    pub flags: u16,                    // Record flags
+    pub bytes_in_use: u32,             // Bytes used in this record
+    pub bytes_allocated: u32,          // Bytes allocated for this record
+    pub base_file_record: u64,         // Base file record (for attribute lists)
+    pub next_attribute_id: u16,        // Next attribute ID
 }
 
 impl MftRecordHeader {
@@ -472,14 +472,17 @@ impl MftManager {
 
     pub fn read_record(&self, record_number: FileRecordNumber) -> FilesystemResult<MftRecord> {
         let records_per_cluster = self.cluster_size as usize / MFT_RECORD_SIZE;
+        if records_per_cluster == 0 {
+            return Err(FilesystemError::InvalidParameter); // Cluster too small for MFT records
+        }
         let cluster_offset = record_number / records_per_cluster as u64;
         let record_offset = (record_number % records_per_cluster as u64) * MFT_RECORD_SIZE as u64;
 
-        let cluster_sector = (self.mft_start_cluster + cluster_offset) * (self.cluster_size / 512) as u64;
+        let sectors_per_cluster = (self.cluster_size / 512).max(1) as u64; // Ensure at least 1 sector per cluster
+        let cluster_sector = (self.mft_start_cluster + cluster_offset) * sectors_per_cluster;
         let mut cluster_data = vec![0u8; self.cluster_size as usize];
 
         // Read the cluster containing the record
-        let sectors_per_cluster = self.cluster_size / 512;
         ide_read_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &mut cluster_data)?;
 
         let record_data = &cluster_data[record_offset as usize..(record_offset as usize + MFT_RECORD_SIZE)];
@@ -488,14 +491,17 @@ impl MftManager {
 
     pub fn write_record(&self, record: &MftRecord) -> FilesystemResult<()> {
         let records_per_cluster = self.cluster_size as usize / MFT_RECORD_SIZE;
+        if records_per_cluster == 0 {
+            return Err(FilesystemError::InvalidParameter); // Cluster too small for MFT records
+        }
         let cluster_offset = record.record_number / records_per_cluster as u64;
         let record_offset = (record.record_number % records_per_cluster as u64) * MFT_RECORD_SIZE as u64;
 
-        let cluster_sector = (self.mft_start_cluster + cluster_offset) * (self.cluster_size / 512) as u64;
+        let sectors_per_cluster = (self.cluster_size / 512).max(1) as u64; // Ensure at least 1 sector per cluster
+        let cluster_sector = (self.mft_start_cluster + cluster_offset) * sectors_per_cluster;
         let mut cluster_data = vec![0u8; self.cluster_size as usize];
 
         // Read existing cluster data
-        let sectors_per_cluster = self.cluster_size / 512;
         ide_read_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &mut cluster_data)?;
 
         // Update the specific record

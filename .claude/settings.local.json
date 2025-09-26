@@ -37,7 +37,13 @@
       "Bash(timeout 30 cargo check --package usb)",
       "Bash(timeout 30 cargo check --message-format=short)",
       "Bash(timeout 30 cargo check --package kernel)",
-      "Bash(timeout 30 cargo check --package pci)"
+      "Bash(timeout 30 cargo check --package pci)",
+      "Bash(timeout 30 cargo check --package galleon2)",
+      "Bash(timeout 30 cargo test --package galleon2)",
+      "Bash(timeout 30 cargo test)",
+      "Bash(timeout 30 cargo check --package galleon2 --tests)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo check --package kernel)",
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 60 cargo build --release)"
     ],
     "deny": [],
     "ask": []
