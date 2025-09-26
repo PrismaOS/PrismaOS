@@ -146,18 +146,23 @@ unsafe extern "C" fn kmain() -> ! {
         }
     };
 
-    // Get filesystem statistics
-    match filesystem.get_stats() {
-        Ok(stats) => {
-            kprintln!("📊 Filesystem Statistics:");
-            kprintln!("   Total space: {} KB", stats.total_space / 1024);
-            kprintln!("   Free space:  {} KB", stats.free_space / 1024);
-            kprintln!("   Used space:  {} KB", stats.used_space / 1024);
-            kprintln!("   Cluster size: {} bytes", stats.cluster_size);
-            kprintln!("   Total clusters: {}", stats.total_clusters);
+    // Wrap all filesystem operations in error handling to prevent panics
+    let filesystem_operations_result = (|| -> Result<(), galleon2::FilesystemError> {
+        // Get filesystem statistics
+        match filesystem.get_stats() {
+            Ok(stats) => {
+                kprintln!("📊 Filesystem Statistics:");
+                kprintln!("   Total space: {} KB", stats.total_space / 1024);
+                kprintln!("   Free space:  {} KB", stats.free_space / 1024);
+                kprintln!("   Used space:  {} KB", stats.used_space / 1024);
+                kprintln!("   Cluster size: {} bytes", stats.cluster_size);
+                kprintln!("   Total clusters: {}", stats.total_clusters);
+            }
+            Err(e) => {
+                kprintln!("⚠ Could not get filesystem stats: {:?}", e);
+                return Err(e);
+            }
         }
-        Err(e) => kprintln!("⚠ Could not get filesystem stats: {:?}", e),
-    }
 
     // Create sample directory structure
     kprintln!("\n🗂 Creating sample file structure...");
