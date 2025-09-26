@@ -179,7 +179,7 @@ unsafe extern "C" fn kmain() -> ! {
         }
 
         // Create sample directory structure
-        kprintln!("\n🗂 Creating sample file structure...");
+        kprintln!("Creating sample file structure...");
 
     // Create directories
     let home_dir = match filesystem.create_directory(5, "home".to_string()) {
@@ -216,7 +216,7 @@ unsafe extern "C" fn kmain() -> ! {
     };
 
     // Create sample files
-    kprintln!("\n📄 Creating sample files...");
+    kprintln!("Creating sample files...");
 
     // Create a simple text file
     let readme_content = b"Welcome to PrismaOS!\n\nThis is a demonstration of the advanced Galleon2 filesystem.\nFeatures:\n- NTFS-like architecture\n- Transaction journaling\n- B+ tree indexing\n- Extent-based allocation\n- Crash recovery\n\nBuilt with Rust for maximum safety and performance.".to_vec();
@@ -258,14 +258,14 @@ unsafe extern "C" fn kmain() -> ! {
     }
 
     // Demonstrate file reading
-    kprintln!("\n📖 Reading back created files...");
+    kprintln!("Reading back created files...");
 
     // Read and display README.txt
     if let Ok(Some(readme_record)) = filesystem.find_file("README.txt") {
         match filesystem.read_file(readme_record) {
             Ok(content) => {
                 if let Ok(text) = alloc::string::String::from_utf8(content) {
-                    kprintln!("\n📄 Contents of README.txt:");
+                    kprintln!("Contents of README.txt:");
                     kprintln!("─────────────────────────────");
                     // Print first few lines
                     for (i, line) in text.lines().enumerate() {
@@ -298,8 +298,8 @@ unsafe extern "C" fn kmain() -> ! {
 
     // Final filesystem sync
     match filesystem.sync() {
-        Ok(()) => kprintln!("\n💾 Filesystem synchronized to disk"),
-        Err(e) => kprintln!("\n⚠ Filesystem sync warning: {:?}", e),
+        Ok(()) => kprintln!("Filesystem synchronized to disk"),
+        Err(e) => kprintln!("Filesystem sync warning: {:?}", e),
     }
 
         kprintln!("\n🎉 Advanced Galleon2 filesystem demonstration completed!");
@@ -309,8 +309,8 @@ unsafe extern "C" fn kmain() -> ! {
 
     // Handle filesystem operation results
     match filesystem_operations_result {
-        Ok(()) => kprintln!("✅ All filesystem operations completed successfully"),
-        Err(e) => kprintln!("⚠ Filesystem operations failed: {:?}", e),
+        Ok(()) => kprintln!("All filesystem operations completed successfully"),
+        Err(e) => kprintln!("Filesystem operations failed: {:?}", e),
     }
 
     // Initialize USB subsystem
