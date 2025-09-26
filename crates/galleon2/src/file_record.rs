@@ -23,10 +23,10 @@ impl FileTimes {
     pub fn new() -> Self {
         let now = get_current_time();
         Self {
-            creation_time: now,
+            creation_time:    now,
             last_access_time: now,
-            last_write_time: now,
-            mft_change_time: now,
+            last_write_time:  now,
+            mft_change_time:  now,
         }
     }
 
@@ -48,17 +48,17 @@ impl FileTimes {
 /// File attributes
 #[derive(Debug, Clone, Copy)]
 pub struct FileAttributes {
-    pub readonly: bool,
-    pub hidden: bool,
-    pub system: bool,
-    pub directory: bool,
-    pub archive: bool,
-    pub normal: bool,
-    pub temporary: bool,
-    pub sparse_file: bool,
+    pub readonly:      bool,
+    pub hidden:        bool,
+    pub system:        bool,
+    pub directory:     bool,
+    pub archive:       bool,
+    pub normal:        bool,
+    pub temporary:     bool,
+    pub sparse_file:   bool,
     pub reparse_point: bool,
-    pub compressed: bool,
-    pub encrypted: bool,
+    pub compressed:    bool,
+    pub encrypted:     bool,
 }
 
 impl FileAttributes {
