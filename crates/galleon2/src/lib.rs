@@ -9,7 +9,17 @@ pub mod file;
 pub mod fs;
 mod indexing;
 mod super_block;
+pub mod mft;
+pub mod journal;
+pub mod file_record;
+pub mod btree;
+pub mod allocation;
+pub mod galleon_fs;
+#[cfg(test)]
+mod tests;
+
 use super_block::SuperBlock;
+pub use galleon_fs::{GalleonFilesystem, FilesystemStats};
 
 /// The result type for all filesystem operations in this library.
 pub type FilesystemResult<T> = Result<T, FilesystemError>;

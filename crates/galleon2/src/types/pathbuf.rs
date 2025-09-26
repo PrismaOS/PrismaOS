@@ -1,5 +1,7 @@
 //! Custom PathBuf type for nostd environments.
 
+use alloc::string::String;
+
 pub struct PathBuf {
     pub path: String,
 }
