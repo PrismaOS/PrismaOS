@@ -247,7 +247,7 @@ unsafe extern "C" fn kmain() -> ! {
     }
 
     // List root directory contents
-    kprintln!("\n📋 Root directory listing:");
+    kprintln!("Root directory listing:");
     match filesystem.list_directory() {
         Ok(entries) => {
             for (name, record_num) in entries {
@@ -286,7 +286,7 @@ unsafe extern "C" fn kmain() -> ! {
     }
 
     // Demonstrate file search
-    kprintln!("\n🔍 File search demonstration:");
+    kprintln!("File search demonstration:");
     let search_files = ["README.txt", "config.ini", "demo.rs", "nonexistent.txt"];
     for filename in &search_files {
         match filesystem.find_file(filename) {
