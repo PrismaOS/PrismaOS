@@ -84,32 +84,46 @@ unsafe extern "C" fn kmain() -> ! {
     ide_initialize();
     kprintln!("IDE driver initialized.");
 
-    // Initialize the advanced Galleon2 filesystem with error handling
-    kprintln!("Initializing advanced Galleon2 filesystem...");
+    // Initialize the advanced Galleon2 filesystem with comprehensive error handling
+    kprintln!("Testing filesystem integration...");
 
-    // Check if IDE drive is accessible before filesystem operations
-    match ide::return_drive_size_bytes(0) {
+    // First, test basic IDE functionality
+    kprintln!("Checking IDE drive accessibility...");
+    let drive_accessible = match ide::return_drive_size_bytes(0) {
         Ok(size) => {
-            kprintln!("IDE drive 0 detected: {} bytes", size);
-        }
-        Err(e) => {
-            kprintln!("⚠ IDE drive 0 not accessible: {:?}", e);
-            kprintln!("Skipping filesystem initialization (no storage available)");
-            // Continue with rest of kernel initialization
-            // Initialize USB subsystem
-            init::usb::init_usb();
-
-            #[cfg(test)]
-            test_main();
-
-            kprintln!("System idle. Halting CPU...");
-
-            // Enter an infinite HALT loop.
-            loop {
-                core::arch::asm!("hlt");
+            kprintln!("✓ IDE drive 0 detected: {} bytes", size);
+            if size == 0 {
+                kprintln!("Drive reports 0 bytes - may not be properly configured");
+                false
+            } else {
+                true
             }
         }
+        Err(e) => {
+            kprintln!("✗ IDE drive 0 not accessible: {:?}", e);
+            false
+        }
+    };
+
+    if !drive_accessible {
+        kprintln!("Skipping advanced filesystem (no storage available)");
+        kprintln!("Continuing with basic kernel functionality...");
+
+        // Initialize USB subsystem
+        init::usb::init_usb();
+
+        #[cfg(test)]
+        test_main();
+
+        kprintln!("System idle. Halting CPU...");
+
+        // Enter an infinite HALT loop.
+        loop {
+            core::arch::asm!("hlt");
+        }
     }
+
+    kprintln!("Proceeding with Galleon2 filesystem initialization...");
 
     // Try to mount existing filesystem, or format a new one
     let mut filesystem = match GalleonFilesystem::mount(0) {
@@ -151,21 +165,21 @@ unsafe extern "C" fn kmain() -> ! {
         // Get filesystem statistics
         match filesystem.get_stats() {
             Ok(stats) => {
-                kprintln!("📊 Filesystem Statistics:");
+                kprintln!("Filesystem Statistics:");
                 kprintln!("   Total space: {} KB", stats.total_space / 1024);
-                kprintln!("   Free space:  {} KB", stats.free_space / 1024);
+                kprintln!("   Free space:  {} KB", stats.free_space / 1024); // TODO: Why do we get a hardware fault here? @ghostedgaming
                 kprintln!("   Used space:  {} KB", stats.used_space / 1024);
                 kprintln!("   Cluster size: {} bytes", stats.cluster_size);
                 kprintln!("   Total clusters: {}", stats.total_clusters);
             }
             Err(e) => {
-                kprintln!("⚠ Could not get filesystem stats: {:?}", e);
+                kprintln!("Could not get filesystem stats: {:?}", e);
                 return Err(e);
             }
         }
 
-    // Create sample directory structure
-    kprintln!("\n🗂 Creating sample file structure...");
+        // Create sample directory structure
+        kprintln!("\n🗂 Creating sample file structure...");
 
     // Create directories
     let home_dir = match filesystem.create_directory(5, "home".to_string()) {
@@ -288,7 +302,16 @@ unsafe extern "C" fn kmain() -> ! {
         Err(e) => kprintln!("\n⚠ Filesystem sync warning: {:?}", e),
     }
 
-    kprintln!("\n🎉 Advanced Galleon2 filesystem demonstration completed!");
+        kprintln!("\n🎉 Advanced Galleon2 filesystem demonstration completed!");
+
+        Ok(())
+    })();
+
+    // Handle filesystem operation results
+    match filesystem_operations_result {
+        Ok(()) => kprintln!("✅ All filesystem operations completed successfully"),
+        Err(e) => kprintln!("⚠ Filesystem operations failed: {:?}", e),
+    }
 
     // Initialize USB subsystem
     init::usb::init_usb();
