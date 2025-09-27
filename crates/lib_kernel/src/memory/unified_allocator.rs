@@ -16,6 +16,7 @@ use x86_64::{
 };
 use core::alloc::GlobalAlloc;
 use spin::Mutex;
+use alloc::{vec::Vec, boxed::Box, string::String, vec};
 
 /// Global allocator instance
 #[global_allocator]

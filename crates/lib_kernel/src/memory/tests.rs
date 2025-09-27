@@ -6,7 +6,7 @@
 use super::{
     unified_gdt, unified_allocator, unified_frame_allocator
 };
-use alloc::{vec::Vec, boxed::Box, string::String};
+use alloc::{vec::Vec, boxed::Box, string::String, vec};
 
 /// Result type for memory tests
 type TestResult = Result<(), &'static str>;
@@ -212,8 +212,8 @@ impl AllocatorTestSuite {
         }
         
         // Message queues
-        for i in 0..50 {
-            let queue = Vec::with_capacity(100);
+        for _i in 0..50 {
+            let queue: Vec<u8> = Vec::with_capacity(100);
             message_queues.push(queue);
         }
         
@@ -328,24 +328,24 @@ impl MemoryIntegrationTestSuite {
             .map_err(|_| "GDT validation failed in integration test")?;
         
         // Test mixed allocation patterns (simulating real system usage)
-        let mut mixed_allocations = Vec::new();
+        let mut mixed_allocations: Vec<Vec<u8>> = Vec::new();
         
         // Small allocations (typical for syscalls, interrupts)
         for i in 0..100 {
-            let small = Box::new([i as u8; 32]);
+            let small = vec![i as u8; 32];
             mixed_allocations.push(small);
         }
         
         // Medium allocations (typical for user processes)
         for i in 0..20 {
             let medium = vec![i as u8; 1024];
-            mixed_allocations.push(Box::new(medium));
+            mixed_allocations.push(medium);
         }
         
         // Large allocations (typical for file I/O)
         for i in 0..5 {
             let large = vec![i as u8; 16384];
-            mixed_allocations.push(Box::new(large));
+            mixed_allocations.push(large);
         }
         
         if mixed_allocations.len() != 125 {

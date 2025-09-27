@@ -4,7 +4,7 @@
 //! paging system, and kernel heap. This now uses the unified memory management system.
 
 use lib_kernel::{
-    memory::{self, unified_frame_allocator, tests::MemoryTestRunner},
+    memory::{self, unified_frame_allocator, tests::MemoryTestRunner, integration_tests},
     scheduler,
     kprintln,
     consts::{HHDM_REQUEST, MEMORY_MAP_REQUEST},
@@ -64,6 +64,17 @@ pub fn init_memory_and_heap() -> Result<(), &'static str> {
                 Err(e) => {
                     kprintln!("[WARN] Memory system validation failed: {}", e);
                     // Continue anyway, but log the warning
+                }
+            }
+
+            // Run integration tests for Galleon2 and Luminal compatibility
+            kprintln!("[INFO] Running Galleon2 and Luminal integration tests...");
+            match integration_tests::run_integration_tests() {
+                Ok(()) => kprintln!("[OK] All integration tests passed - systems ready for complex operations"),
+                Err(e) => {
+                    kprintln!("[WARN] Integration test failed: {}", e);
+                    kprintln!("[WARN] Some complex systems may not work properly");
+                    // Continue anyway for basic functionality
                 }
             }
 
