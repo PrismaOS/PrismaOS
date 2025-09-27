@@ -204,19 +204,13 @@ extern "x86-interrupt" fn page_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: PageFaultErrorCode,
 ) {
-    let fault_address = Cr2::read().unwrap_or(x86_64::VirtAddr::new(0));
+    use x86_64::registers::control::Cr2;
+    
+    let fault_address = Cr2::read();
     
     // Check if this came from userspace
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
-    
-    // Format address without alloc
-    let mut addr_buf = [0u8; 18];
-    let addr_str = write_hex_to_buf(fault_address.as_u64(), &mut addr_buf);
-    
-    // Create message without format!
-    let write_str = if error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) { "Write" } else { "Read" };
-    let present_str = if error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) { "Present" } else { "NotPresent" };
     
     // Build a static message
     crate::utils::bsod::trigger_comprehensive_bsod(

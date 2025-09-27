@@ -25,3 +25,13 @@ usb = { path = "./drivers/usb/" }
 # External crates
 futures-util = { version = "0.3.31", default-features = false }
 futures = { version = "0.3.31", default-features = false }
+
+# Workspace panic settings
+[profile.dev]
+panic = "abort"
+
+[profile.release] 
+panic = "abort"
+
+[profile.test]
+panic = "abort"

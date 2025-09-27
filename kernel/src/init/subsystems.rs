@@ -26,13 +26,8 @@ impl ::core::fmt::Display for SubsystemInitError {
 /// Safe initialization of higher-level subsystems
 pub fn init_higher_level_subsystems() -> Result<(), &'static str> {
     // Initialize syscall interface
-    match lib_kernel::syscall::init_syscalls() {
-        Ok(_) => lib_kernel::kprintln!("[OK] Syscall interface initialized"),
-        Err(_) => {
-            lib_kernel::kprintln!("[WARN] Syscall interface initialization failed, continuing...");
-            // Continue without syscalls for basic functionality
-        }
-    }
+    lib_kernel::syscall::init_syscalls();
+    lib_kernel::kprintln!("[OK] Syscall interface initialized");
 
     // Setup userspace protection
     match setup_userspace_protection_safe() {

@@ -92,10 +92,8 @@ pub fn init_memory_and_heap() -> Result<(), MemoryInitError> {
     kprintln!("[OK] Memory system validation passed");
 
     // Initialize scheduler (single CPU for now)
-    match scheduler::init_scheduler(1) {
-        Ok(_) => kprintln!("[OK] Scheduler initialized"),
-        Err(_) => return Err(MemoryInitError::SchedulerInitFailed),
-    }
+    scheduler::init_scheduler(1);
+    kprintln!("[OK] Scheduler initialized");
 
     kprintln!("[INFO] Unified memory management system ready");
     Ok(())

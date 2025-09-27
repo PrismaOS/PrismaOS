@@ -127,7 +127,7 @@ fn run_main_kernel_loop() -> ! {
 
     // Enter efficient idle loop
     loop {
-        core::arch::asm!("hlt");
+        unsafe { core::arch::asm!("hlt"); }
     }
 }
 
