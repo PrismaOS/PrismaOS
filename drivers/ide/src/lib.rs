@@ -114,24 +114,36 @@ pub fn ide_read_sectors(
     lba: u32,
     buf: &mut [u8]
 ) -> IdeResult<()> {
+    kprintln!("IDE: ide_read_sectors called with drive={}, numsects={}, lba={}", drive, numsects, lba);
+
     // Fast parameter validation
     if drive > 3 {
+        kprintln!("IDE: Invalid drive number {}", drive);
         return Err(IdeError::InvalidParameter);
     }
 
-    if unsafe { IDE_DEVICES[drive as usize].reserved } == 0 {
+    let reserved = unsafe { IDE_DEVICES[drive as usize].reserved };
+    kprintln!("IDE: Drive {} reserved status: {}", drive, reserved);
+
+    if reserved == 0 {
+        kprintln!("IDE: Drive {} not found/not reserved", drive);
         return Err(IdeError::DriveNotFound);
     }
 
     // Check buffer size
     let required_size = numsects as usize * 512;
+    kprintln!("IDE: Buffer check - required: {}, provided: {}", required_size, buf.len());
     if buf.len() < required_size {
+        kprintln!("IDE: Buffer too small");
         return Err(IdeError::BufferTooSmall);
     }
 
+    kprintln!("IDE: Getting device info for drive {}", drive);
     let device = unsafe { &IDE_DEVICES[drive as usize] };
     let channel: u8 = device.channel;
     let slavebit: u8 = device.drive;
+    kprintln!("IDE: Device info - channel: {}, slavebit: {}", channel, slavebit);
+
     let bus: u16;
 
     unsafe { bus = CHANNELS[channel as usize].base; }

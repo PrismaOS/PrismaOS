@@ -127,8 +127,13 @@ unsafe extern "C" fn kmain() -> ! {
 
     // Try to mount existing filesystem, or format a new one
     kprintln!("About to call GalleonFilesystem::mount(0)...");
+    kprintln!("DEBUG: Function call preparation complete");
+    kprintln!("DEBUG: Calling GalleonFilesystem::mount with parameter 0");
 
-    let mut filesystem = match GalleonFilesystem::mount(0) {
+    let mount_result = GalleonFilesystem::mount(0);
+    kprintln!("DEBUG: GalleonFilesystem::mount(0) returned");
+
+    let mut filesystem = match mount_result {
         Ok(fs) => {
             kprintln!("✓ Mounted existing Galleon2 filesystem on drive 0");
             fs
