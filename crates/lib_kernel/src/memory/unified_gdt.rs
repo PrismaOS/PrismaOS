@@ -41,6 +41,18 @@ pub struct GdtSelectors {
     pub tss: SegmentSelector,
 }
 
+impl GdtSelectors {
+    /// Get user code selector with Ring3 privilege level for use in user mode
+    pub fn user_code_with_rpl3(&self) -> SegmentSelector {
+        SegmentSelector::new(self.user_code.index(), PrivilegeLevel::Ring3)
+    }
+    
+    /// Get user data selector with Ring3 privilege level for use in user mode
+    pub fn user_data_with_rpl3(&self) -> SegmentSelector {
+        SegmentSelector::new(self.user_data.index(), PrivilegeLevel::Ring3)
+    }
+}
+
 /// The unified GDT instance
 lazy_static! {
     static ref GDT: (GlobalDescriptorTable, GdtSelectors) = {
@@ -64,15 +76,25 @@ lazy_static! {
         let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));       // Should be 0x28
         
         // Verify that we got the expected layout
+        // Note: User segments have RPL=3, so we need to check the index, not the full selector
         let kernel_cs_expected = 0x08;
         let kernel_ds_expected = 0x10;
-        let user_ds_expected = 0x18;
-        let user_cs_expected = 0x20;
+        let user_ds_expected_index = 3; // Index 3 = selector 0x18, but with RPL=3 becomes 0x1B
+        let user_cs_expected_index = 4; // Index 4 = selector 0x20, but with RPL=3 becomes 0x23
         
         assert_eq!(kernel_code.0, kernel_cs_expected, "Kernel CS selector mismatch");
         assert_eq!(kernel_data.0, kernel_ds_expected, "Kernel DS selector mismatch");
-        assert_eq!(user_data.0, user_ds_expected, "User DS selector mismatch");
-        assert_eq!(user_code.0, user_cs_expected, "User CS selector mismatch");
+        assert_eq!(user_data.index(), user_ds_expected_index, "User DS index mismatch");
+        assert_eq!(user_code.index(), user_cs_expected_index, "User CS index mismatch");
+        
+        // Verify the SYSCALL/SYSRET offset requirements using the base selector values
+        let user_data_base = user_ds_expected_index * 8;    // 3 * 8 = 0x18
+        let user_code_base = user_cs_expected_index * 8;    // 4 * 8 = 0x20
+        let syscall_ds_offset = user_data_base - kernel_ds_expected; // Should be 8
+        let syscall_cs_offset = user_code_base - kernel_ds_expected; // Should be 16
+        
+        assert_eq!(syscall_ds_offset, 8, "User DS not at Kernel DS + 8 for SYSCALL compatibility");
+        assert_eq!(syscall_cs_offset, 16, "User CS not at Kernel DS + 16 for SYSCALL compatibility");
         
         let selectors = GdtSelectors {
             kernel_code,
@@ -106,20 +128,24 @@ pub fn init() -> Result<(), &'static str> {
         load_tss(selectors.tss);
     }
     
-    // Verify SYSCALL compatibility - the layout should already be guaranteed by the assertions above
-    // But let's double-check the relationships that SYSCALL/SYSRET requires
-    let user_data_offset = (selectors.user_data.0 as i32) - (selectors.kernel_data.0 as i32);
-    let user_code_offset = (selectors.user_code.0 as i32) - (selectors.kernel_data.0 as i32);
+    // Verify SYSCALL compatibility - we need to check the base selector values (without RPL)
+    // SYSCALL/SYSRET works with the descriptor table indices, not the full selector values
+    let user_data_base = (selectors.user_data.index() as u16) * 8;  // Index 3 -> 0x18
+    let user_code_base = (selectors.user_code.index() as u16) * 8;  // Index 4 -> 0x20  
+    let kernel_ds_base = selectors.kernel_data.0;                   // Should be 0x10
+    
+    let user_data_offset = (user_data_base as i32) - (kernel_ds_base as i32);
+    let user_code_offset = (user_code_base as i32) - (kernel_ds_base as i32);
     
     // For SYSCALL/SYSRET to work:
-    // User DS should be Kernel DS + 8 (0x10 + 8 = 0x18)
-    // User CS should be Kernel DS + 16 (0x10 + 16 = 0x20)
+    // User DS base should be Kernel DS + 8 (0x10 + 8 = 0x18)
+    // User CS base should be Kernel DS + 16 (0x10 + 16 = 0x20)
     if user_data_offset != 8 || user_code_offset != 16 {
         crate::kprintln!("    ❌ ERROR: GDT layout not SYSCALL compatible!");
         crate::kprintln!("       Kernel CS: {:#x} (expected 0x08)", selectors.kernel_code.0);
         crate::kprintln!("       Kernel DS: {:#x} (expected 0x10)", selectors.kernel_data.0);
-        crate::kprintln!("       User DS:   {:#x} (expected 0x18)", selectors.user_data.0);
-        crate::kprintln!("       User CS:   {:#x} (expected 0x20)", selectors.user_code.0);
+        crate::kprintln!("       User DS:   {:#x} (base {:#x}, expected base 0x18)", selectors.user_data.0, user_data_base);
+        crate::kprintln!("       User CS:   {:#x} (base {:#x}, expected base 0x20)", selectors.user_code.0, user_code_base);
         crate::kprintln!("       User DS offset: {} (should be 8)", user_data_offset);
         crate::kprintln!("       User CS offset: {} (should be 16)", user_code_offset);
         return Err("GDT layout incompatible with SYSCALL/SYSRET");
@@ -128,10 +154,10 @@ pub fn init() -> Result<(), &'static str> {
     crate::kprintln!("    [INFO] Unified GDT initialized successfully");
     crate::kprintln!("       Kernel CS: {:#x}", selectors.kernel_code.0);
     crate::kprintln!("       Kernel DS: {:#x}", selectors.kernel_data.0);
-    crate::kprintln!("       User DS:   {:#x}", selectors.user_data.0);
-    crate::kprintln!("       User CS:   {:#x}", selectors.user_code.0);
+    crate::kprintln!("       User DS:   {:#x} (base {:#x})", selectors.user_data.0, user_data_base);
+    crate::kprintln!("       User CS:   {:#x} (base {:#x})", selectors.user_code.0, user_code_base);
     crate::kprintln!("       TSS:       {:#x}", selectors.tss.0);
-    crate::kprintln!("    ✅ GDT layout is SYSCALL compatible");
+    crate::kprintln!("    ✅ GDT layout is SYSCALL compatible (offsets +8, +16)");
     
     Ok(())
 }
@@ -186,18 +212,6 @@ pub fn update_tss_rsp0(new_rsp0: VirtAddr) {
         // This is safe because we control all access to the TSS
         let tss_ptr = &*TSS as *const TaskStateSegment as *mut TaskStateSegment;
         (*tss_ptr).privilege_stack_table[0] = new_rsp0;
-    }
-}
-
-impl GdtSelectors {
-    /// Get user code selector with proper privilege level (RPL=3)
-    pub fn user_code_with_rpl3(&self) -> SegmentSelector {
-        SegmentSelector::new(self.user_code.index(), PrivilegeLevel::Ring3)
-    }
-    
-    /// Get user data selector with proper privilege level (RPL=3)  
-    pub fn user_data_with_rpl3(&self) -> SegmentSelector {
-        SegmentSelector::new(self.user_data.index(), PrivilegeLevel::Ring3)
     }
 }
 
