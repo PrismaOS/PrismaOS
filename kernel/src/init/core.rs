@@ -11,6 +11,10 @@ use lib_kernel::{
 };
 
 pub fn init_core_subsystems() {
+    // CRITICAL: Set up emergency fault handling FIRST
+    // This catches faults that occur during early initialization
+    interrupts::init_emergency_idt();
+    
     // Bootstrap heap for early allocations
     unsafe { 
         if let Err(e) = memory::init_bootstrap_heap() {
@@ -25,9 +29,9 @@ pub fn init_core_subsystems() {
         Err(e) => panic!("Failed to initialize GDT: {}", e),
     }
 
-    // Initialize IDT
+    // Initialize full IDT (replaces emergency IDT)
     interrupts::init_idt();
-    kprintln!("[OK] IDT initialized");
+    kprintln!("[OK] IDT initialized with comprehensive fault handling");
 
     // Initialize PICs
     unsafe { PICS.lock().initialize() };

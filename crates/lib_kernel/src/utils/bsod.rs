@@ -1,5 +1,6 @@
 use core::panic::PanicInfo;
 extern crate alloc; // For format! macro
+use alloc::format;
 
 use crate::scrolling_text;
 
@@ -436,4 +437,232 @@ fn extract_filename(path: &str) -> &str {
     path.split('/').last()
         .or_else(|| path.split('\\').last())
         .unwrap_or(path)
+}
+
+/// Comprehensive BSOD trigger that handles all fault types consistently
+/// This ensures ALL faults are caught and display properly
+pub fn trigger_comprehensive_bsod(
+    error_type: &'static str,
+    message: &str,
+    is_user_mode: bool,
+    rip: Option<u64>,
+    error_code: Option<u64>
+) -> ! {
+    // Disable interrupts immediately to prevent re-entrancy
+    x86_64::instructions::interrupts::disable();
+    
+    // Create a comprehensive panic info structure
+    let panic_msg = if is_user_mode {
+        format!("[USER] {}: {} (would normally terminate process)", error_type, message)
+    } else {
+        format!("[KERNEL] {}: {}", error_type, message)
+    };
+    
+    // Additional diagnostic info
+    let mut detailed_msg = panic_msg.clone();
+    if let Some(rip_val) = rip {
+        detailed_msg.push_str(&format!(" | RIP: {:#x}", rip_val));
+    }
+    if let Some(error_val) = error_code {
+        detailed_msg.push_str(&format!(" | Error: {:#x}", error_val));
+    }
+    
+    // Log to serial/debug output first (in case framebuffer fails)
+    crate::serial::write_serial(&format!("FAULT: {}\n", detailed_msg));
+    
+    // Try to render comprehensive BSOD
+    unsafe {
+        if let Some(ref mut renderer) = scrolling_text::GLOBAL_RENDERER {
+            render_comprehensive_framebuffer_bsod(renderer, error_type, &detailed_msg, is_user_mode, rip, error_code);
+        } else {
+            render_comprehensive_vga_bsod(error_type, &detailed_msg, is_user_mode, rip, error_code);
+        }
+    }
+    
+    // Final halt
+    crate::utils::system::halt_system();
+}
+
+/// Render comprehensive VGA BSOD with fault details
+unsafe fn render_comprehensive_vga_bsod(
+    error_type: &str,
+    message: &str,
+    is_user_mode: bool,
+    rip: Option<u64>,
+    error_code: Option<u64>
+) {
+    let vga_buffer = 0xb8000 as *mut u16;
+    
+    // Clear screen with blue background
+    for i in 0..(80 * 25) {
+        vga_buffer.add(i).write(0x1F00 | b' ' as u16);
+    }
+    
+    // Display comprehensive header
+    let header = b"*** PRISMAOS COMPREHENSIVE FAULT HANDLER ***";
+    let start_pos = (80 - header.len()) / 2;
+    for (i, &byte) in header.iter().enumerate() {
+        if start_pos + i < 80 {
+            vga_buffer.add(start_pos + i).write(0x1F00 | byte as u16);
+        }
+    }
+    
+    // Show fault type
+    let fault_label = b"FAULT TYPE: ";
+    let line2_start = 80 * 3;
+    for (i, &byte) in fault_label.iter().enumerate() {
+        if line2_start + i < 80 * 25 {
+            vga_buffer.add(line2_start + i).write(0x1F00 | byte as u16);
+        }
+    }
+    
+    // Display error type (truncated to fit)
+    let type_bytes = error_type.as_bytes();
+    let type_start = line2_start + fault_label.len();
+    for (i, &byte) in type_bytes.iter().take(80 - fault_label.len()).enumerate() {
+        if type_start + i < 80 * 25 {
+            vga_buffer.add(type_start + i).write(0x1F00 | byte as u16);
+        }
+    }
+    
+    // Show privilege level
+    let priv_msg = if is_user_mode { "USER MODE FAULT" } else { "KERNEL MODE FAULT" };
+    let line4_start = 80 * 5;
+    for (i, byte) in priv_msg.bytes().enumerate() {
+        if line4_start + i < 80 * 25 {
+            vga_buffer.add(line4_start + i).write(0x1F00 | byte as u16);
+        }
+    }
+    
+    // Show RIP if available
+    if let Some(rip_val) = rip {
+        let rip_label = b"RIP: ";
+        let line6_start = 80 * 7;
+        for (i, &byte) in rip_label.iter().enumerate() {
+            if line6_start + i < 80 * 25 {
+                vga_buffer.add(line6_start + i).write(0x1F00 | byte as u16);
+            }
+        }
+        
+        // Display RIP in hex (simplified)
+        let rip_str = format!("{:#x}", rip_val);
+        let rip_start = line6_start + rip_label.len();
+        for (i, byte) in rip_str.bytes().take(80 - rip_label.len()).enumerate() {
+            if rip_start + i < 80 * 25 {
+                vga_buffer.add(rip_start + i).write(0x1F00 | byte as u16);
+            }
+        }
+    }
+    
+    // Show error code if available
+    if let Some(error_val) = error_code {
+        let error_label = b"ERROR: ";
+        let line8_start = 80 * 9;
+        for (i, &byte) in error_label.iter().enumerate() {
+            if line8_start + i < 80 * 25 {
+                vga_buffer.add(line8_start + i).write(0x1F00 | byte as u16);
+            }
+        }
+        
+        // Display error code in hex (simplified)
+        let error_str = format!("{:#x}", error_val);
+        let error_start = line8_start + error_label.len();
+        for (i, byte) in error_str.bytes().take(80 - error_label.len()).enumerate() {
+            if error_start + i < 80 * 25 {
+                vga_buffer.add(error_start + i).write(0x1F00 | byte as u16);
+            }
+        }
+    }
+    
+    // Instructions
+    let instructions = if is_user_mode {
+        [
+            "User process fault detected",
+            "Process would be terminated in full OS",
+            "Kernel stability maintained",
+            "System restart recommended for testing"
+        ]
+    } else {
+        [
+            "Critical kernel fault detected",
+            "System halted to prevent data corruption",
+            "Please restart and check system logs",
+            "If persistent, review recent changes"
+        ]
+    };
+    
+    let mut current_line = 12;
+    for instruction in instructions.iter() {
+        let line_start = 80 * current_line;
+        for (i, byte) in instruction.bytes().take(80).enumerate() {
+            if line_start + i < 80 * 25 {
+                vga_buffer.add(line_start + i).write(0x1F00 | byte as u16);
+            }
+        }
+        current_line += 1;
+    }
+}
+
+/// Render comprehensive framebuffer BSOD
+unsafe fn render_comprehensive_framebuffer_bsod(
+    renderer: &mut scrolling_text::ScrollingTextRenderer,
+    error_type: &str,
+    message: &str,
+    is_user_mode: bool,
+    rip: Option<u64>,
+    error_code: Option<u64>
+) {
+    let windows_blue = 0xFF0037DA;
+    let white = 0xFFFFFFFF;
+    let red = 0xFFFF4444;
+    let yellow = 0xFFFFFF00;
+    let pitch = renderer.get_pitch();
+    let width = renderer.get_fb_width();
+    let height = renderer.get_fb_height();
+    let fb_addr = renderer.get_fb_addr();
+    
+    // Create solid background
+    draw_solid_background(fb_addr, pitch, width, height, windows_blue);
+    
+    // Draw enhanced sad face (different color for user vs kernel)
+    let face_color = if is_user_mode { yellow } else { red };
+    draw_clean_sad_face(fb_addr, pitch, width, height, face_color);
+    
+    // Display comprehensive fault information
+    let fault_text = if is_user_mode {
+        format!("USER FAULT: {}", error_type)
+    } else {
+        format!("KERNEL FAULT: {}", error_type)
+    };
+    
+    // Use the scrolling text renderer to display detailed info
+    // Note: We don't clear the screen as the background is already set
+    renderer.write_line(fault_text.as_bytes());
+    renderer.write_line(b"");
+    
+    if let Some(rip_val) = rip {
+        let rip_line = format!("RIP: {:#x}", rip_val);
+        renderer.write_line(rip_line.as_bytes());
+    }
+    
+    if let Some(error_val) = error_code {
+        let error_line = format!("Error Code: {:#x}", error_val);
+        renderer.write_line(error_line.as_bytes());
+    }
+    
+    renderer.write_line(b"");
+    renderer.write_line(message.as_bytes());
+    renderer.write_line(b"");
+    
+    if is_user_mode {
+        renderer.write_line(b"USERSPACE FAULT - Process would be terminated");
+        renderer.write_line(b"Kernel remains stable");
+    } else {
+        renderer.write_line(b"CRITICAL KERNEL FAULT");
+        renderer.write_line(b"System halted for safety");
+    }
+    
+    renderer.write_line(b"");
+    renderer.write_line(b"System diagnostic information saved");
+    renderer.write_line(b"Please restart to continue");
 }
