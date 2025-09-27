@@ -46,18 +46,33 @@ lazy_static! {
     static ref GDT: (GlobalDescriptorTable, GdtSelectors) = {
         let mut gdt = GlobalDescriptorTable::new();
         
-        // Build GDT with proper SYSCALL/SYSRET layout
-        // SYSCALL/SYSRET requires specific offsets:
-        // User DS must be Kernel DS + 8
-        // User CS must be Kernel DS + 16
+        // Build GDT with guaranteed SYSCALL/SYSRET layout
+        // SYSCALL/SYSRET has strict requirements:
+        // - SYSCALL loads CS from STAR[47:32] and SS from STAR[47:32] + 8
+        // - SYSRET loads CS from STAR[63:48] + 16 and SS from STAR[63:48] + 8
+        // This means:
+        //   Kernel CS must be at selector 0x08
+        //   Kernel DS must be at selector 0x10  
+        //   User DS must be at selector 0x18 (Kernel DS + 8)
+        //   User CS must be at selector 0x20 (Kernel DS + 16)
         
-        let kernel_code = gdt.append(Descriptor::kernel_code_segment());
-        let kernel_data = gdt.append(Descriptor::kernel_data_segment());
+        // Ensure we get the expected selectors by appending in specific order
+        let kernel_code = gdt.append(Descriptor::kernel_code_segment());    // Should be 0x08
+        let kernel_data = gdt.append(Descriptor::kernel_data_segment());    // Should be 0x10
+        let user_data = gdt.append(Descriptor::user_data_segment());        // Should be 0x18
+        let user_code = gdt.append(Descriptor::user_code_segment());        // Should be 0x20
+        let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));       // Should be 0x28
         
-        // For SYSCALL compatibility, user segments must follow specific pattern
-        let user_data = gdt.append(Descriptor::user_data_segment());
-        let user_code = gdt.append(Descriptor::user_code_segment());
-        let tss_selector = gdt.append(Descriptor::tss_segment(&TSS));
+        // Verify that we got the expected layout
+        let kernel_cs_expected = 0x08;
+        let kernel_ds_expected = 0x10;
+        let user_ds_expected = 0x18;
+        let user_cs_expected = 0x20;
+        
+        assert_eq!(kernel_code.0, kernel_cs_expected, "Kernel CS selector mismatch");
+        assert_eq!(kernel_data.0, kernel_ds_expected, "Kernel DS selector mismatch");
+        assert_eq!(user_data.0, user_ds_expected, "User DS selector mismatch");
+        assert_eq!(user_code.0, user_cs_expected, "User CS selector mismatch");
         
         let selectors = GdtSelectors {
             kernel_code,
@@ -91,12 +106,20 @@ pub fn init() -> Result<(), &'static str> {
         load_tss(selectors.tss);
     }
     
-    // Verify SYSCALL compatibility
+    // Verify SYSCALL compatibility - the layout should already be guaranteed by the assertions above
+    // But let's double-check the relationships that SYSCALL/SYSRET requires
     let user_data_offset = (selectors.user_data.0 as i32) - (selectors.kernel_data.0 as i32);
     let user_code_offset = (selectors.user_code.0 as i32) - (selectors.kernel_data.0 as i32);
     
+    // For SYSCALL/SYSRET to work:
+    // User DS should be Kernel DS + 8 (0x10 + 8 = 0x18)
+    // User CS should be Kernel DS + 16 (0x10 + 16 = 0x20)
     if user_data_offset != 8 || user_code_offset != 16 {
-        crate::kprintln!("    ⚠️  WARNING: GDT layout not SYSCALL compatible!");
+        crate::kprintln!("    ❌ ERROR: GDT layout not SYSCALL compatible!");
+        crate::kprintln!("       Kernel CS: {:#x} (expected 0x08)", selectors.kernel_code.0);
+        crate::kprintln!("       Kernel DS: {:#x} (expected 0x10)", selectors.kernel_data.0);
+        crate::kprintln!("       User DS:   {:#x} (expected 0x18)", selectors.user_data.0);
+        crate::kprintln!("       User CS:   {:#x} (expected 0x20)", selectors.user_code.0);
         crate::kprintln!("       User DS offset: {} (should be 8)", user_data_offset);
         crate::kprintln!("       User CS offset: {} (should be 16)", user_code_offset);
         return Err("GDT layout incompatible with SYSCALL/SYSRET");

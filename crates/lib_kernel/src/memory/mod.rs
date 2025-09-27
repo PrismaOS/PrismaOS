@@ -10,6 +10,7 @@ pub mod unified_gdt;
 pub mod unified_allocator;
 pub mod unified_frame_allocator;
 pub mod tests;
+pub mod gdt_debug;
 // pub mod integration_tests;
 
 // Legacy modules (kept for compatibility during transition)
