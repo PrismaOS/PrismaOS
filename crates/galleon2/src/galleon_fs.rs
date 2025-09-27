@@ -3,7 +3,7 @@
 //! Combines all components (MFT, journaling, B+trees, allocation) into a cohesive filesystem.
 
 use alloc::{vec, string::String, vec::Vec};
-use lib_kernel::kprintln;
+use lib_kernel::{kprint, kprintln};
 use crate::{
     FilesystemResult, FilesystemError,
     super_block::SuperBlock,
@@ -418,44 +418,29 @@ impl GalleonFilesystem {
 
     /// Mount an existing filesystem
     pub fn mount(drive: u8) -> FilesystemResult<Self> {
-        kprintln!("ENTRY: mount() function called with drive={}", drive);
-        kprintln!("ENTRY: About to print Mount message");
         kprintln!("Mount!");
-        kprintln!("ENTRY: Mount message printed successfully");
         kprintln!("Starting filesystem mount for drive {}", drive);
 
-        // Test basic operations step by step
-        kprintln!("DEBUG: Step 1 - About to validate drive parameter");
-
         // Validate drive parameter
-        kprintln!("DEBUG: Step 2 - Checking if drive {} > 3", drive);
         if drive > 3 {
             kprintln!("Invalid drive number: {}", drive);
             return Err(FilesystemError::InvalidParameter);
         }
-        kprintln!("DEBUG: Step 3 - Drive parameter validation passed");
 
-        // Use heap allocation to avoid stack overflow
-        kprintln!("DEBUG: Step 4 - Using heap allocation instead of stack");
-        kprintln!("DEBUG: Step 4a - Allocating 512 bytes on heap");
+        // Read super block with error recovery
+        kprintln!("Reading super block from sector 1...");
+        let mut sector = [0u8; 512];
 
-        let mut sector = vec![0u8; 512];
-        kprintln!("DEBUG: Step 5 - Sector buffer (512 bytes) created successfully on heap");
+        // Clear sector buffer first for safety
+        for i in 0..512 {
+            sector[i] = 0;
+        }
 
-        // Buffer is already zeroed by vec![0u8; 512]
-        kprintln!("DEBUG: Step 6 - Sector buffer already cleared by Vec::new");
-        kprintln!("DEBUG: Step 7 - Sector buffer clearing completed");
+        kprintln!("Sector buffer cleared, attempting to read...");
 
-        kprintln!("DEBUG: Step 8 - Sector buffer cleared, attempting to read...");
-        kprintln!("DEBUG: Step 9 - About to call ide_read_sectors(drive={}, numsects=1, lba=1)", drive);
-
-        kprintln!("DEBUG: Step 9a - Calling ide_read_sectors now...");
-        let ide_result = ide_read_sectors(drive, 1, 1, &mut sector[..]);
-        kprintln!("DEBUG: Step 9b - ide_read_sectors call returned");
-
-        match ide_result {
+        match ide_read_sectors(drive, 1, 1, &mut sector) {
             Ok(()) => {
-                kprintln!("DEBUG: Step 10 - Super block sector read successfully");
+                kprintln!("Super block sector read successfully");
 
                 // Verify we actually got data (not all zeros)
                 let mut has_data = false;
@@ -477,18 +462,14 @@ impl GalleonFilesystem {
         }
 
         kprintln!("Validating super block...");
-
-        // Convert Vec to fixed-size array for validation
-        let sector_array: [u8; 512] = sector.try_into().map_err(|_| FilesystemError::InvalidParameter)?;
-
-        if !SuperBlock::is_valid(&sector_array) {
+        if !SuperBlock::is_valid(&sector) {
             kprintln!("Super block validation failed - invalid boot block");
             return Err(FilesystemError::InvalidBootBlock);
         }
         kprintln!("Super block validation passed");
 
         kprintln!("Deserializing Galleon super block...");
-        let super_block = GalleonSuperBlock::deserialize(&sector_array)?;
+        let super_block = GalleonSuperBlock::deserialize(&sector)?;
         kprintln!("Super block deserialized successfully");
         kprintln!("Cluster size: {}", super_block.cluster_size);
         kprintln!("Total blocks: {}", super_block.legacy_super_block.total_blocks);
