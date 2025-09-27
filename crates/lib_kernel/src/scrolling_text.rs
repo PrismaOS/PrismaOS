@@ -98,16 +98,20 @@ impl<'a> ScrollingTextRenderer<'a> {
             return;
         }
 
-        let bytes_per_pixel = 4usize;
         let stride = self.pitch;
         let width = self.fb_width;
         let height = self.fb_height;
+        let total_bytes = height * stride;
 
-        for y in 0..height {
-            let row_base = unsafe { self.fb_addr.add(y * stride) };
-            for x in 0..width {
-                let pixel_ptr = unsafe { row_base.add(x * bytes_per_pixel).cast::<u32>() };
-                unsafe { pixel_ptr.write_volatile(self.bg_color) };
+        if self.bg_color == 0 {
+            // Black background - use fastest zero fill
+            unsafe { ptr::write_bytes(self.fb_addr, 0, total_bytes) };
+        } else {
+            // Non-black background - fill row by row for efficiency
+            for y in 0..height {
+                let row_start = unsafe { self.fb_addr.add(y * stride) };
+                let row_pixels = unsafe { core::slice::from_raw_parts_mut(row_start as *mut u32, width) };
+                row_pixels.fill(self.bg_color);
             }
         }
     }
@@ -140,13 +144,27 @@ impl<'a> ScrollingTextRenderer<'a> {
             ptr::copy(src, dst, copy_bytes);
         }
 
-        // Clear the freed bottom area
+        // Clear the freed bottom area efficiently
         let start_clear_row = copy_rows;
-        for y in start_clear_row..h {
-            let row_base = unsafe { self.fb_addr.add(y * stride) };
-            for x in 0..self.fb_width {
-                let pixel_ptr = unsafe { row_base.add(x * 4).cast::<u32>() };
-                unsafe { pixel_ptr.write_volatile(self.bg_color) };
+        let clear_rows = h - start_clear_row;
+        if clear_rows > 0 {
+            let clear_start = unsafe { self.fb_addr.add(start_clear_row * stride) };
+            let clear_bytes = clear_rows * stride;
+
+            // Fast bulk clear - much faster than pixel-by-pixel
+            if self.bg_color == 0 {
+                // Black background - use fast zero fill
+                unsafe { ptr::write_bytes(clear_start, 0, clear_bytes) };
+            } else {
+                // Non-black background - fill with color pattern
+                let pixels_per_row = self.fb_width;
+                let row_bytes = pixels_per_row * 4;
+
+                for y in 0..clear_rows {
+                    let row_start = unsafe { clear_start.add(y * stride) };
+                    let row_pixels = unsafe { core::slice::from_raw_parts_mut(row_start as *mut u32, pixels_per_row) };
+                    row_pixels.fill(self.bg_color);
+                }
             }
         }
 
@@ -469,12 +487,15 @@ impl LineWriter {
 impl core::fmt::Write for LineWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         let bytes = s.as_bytes();
-        for &byte in bytes {
-            if self.pos < self.buffer.len() - 1 {
-                self.buffer[self.pos] = byte;
-                self.pos += 1;
-            }
+        let available = self.buffer.len() - 1 - self.pos; // Leave space for null terminator
+        let copy_len = core::cmp::min(bytes.len(), available);
+
+        if copy_len > 0 {
+            // Bulk copy instead of byte-by-byte
+            self.buffer[self.pos..self.pos + copy_len].copy_from_slice(&bytes[..copy_len]);
+            self.pos += copy_len;
         }
+
         Ok(())
     }
 }
