@@ -62,6 +62,7 @@ pub extern "C" fn rust_eh_personality() {}
 pub extern "C" fn _Unwind_Resume() {}
 
 pub mod scrolling_text;
+pub mod fast_console;
 pub mod interrupts;
 pub mod scheduler;
 pub mod executor;
