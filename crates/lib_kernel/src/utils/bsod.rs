@@ -1,8 +1,46 @@
 use core::panic::PanicInfo;
-extern crate alloc; // For format! macro
-use alloc::format;
 
 use crate::scrolling_text;
+
+/// Simple hex formatter that doesn't require alloc  
+fn write_hex_to_buf(val: u64, buf: &mut [u8; 18]) -> &[u8] {
+    const HEX_CHARS: &[u8] = b"0123456789ABCDEF";
+    buf[0] = b'0';
+    buf[1] = b'x';
+    
+    let mut pos = 2;
+    let mut temp = val;
+    let mut digits = [0u8; 16];
+    let mut digit_count = 0;
+    
+    // Extract digits
+    if temp == 0 {
+        digits[0] = 0;
+        digit_count = 1;
+    } else {
+        while temp > 0 {
+            digits[digit_count] = (temp % 16) as u8;
+            temp /= 16;
+            digit_count += 1;
+        }
+    }
+    
+    // Write digits in reverse order
+    for i in (0..digit_count).rev() {
+        buf[pos] = HEX_CHARS[digits[i] as usize];
+        pos += 1;
+    }
+    
+    &buf[0..pos]
+}
+
+/// Simple string copier for static messages
+fn copy_str_to_buf(src: &str, buf: &mut [u8], max_len: usize) -> usize {
+    let src_bytes = src.as_bytes();
+    let copy_len = core::cmp::min(src_bytes.len(), max_len);
+    buf[0..copy_len].copy_from_slice(&src_bytes[0..copy_len]);
+    copy_len
+}
 
 /// Fast square root approximation for no_std environment
 fn fast_sqrt(x: f32) -> f32 {
@@ -272,15 +310,10 @@ unsafe fn overlay_clean_bsod_text(renderer: &mut scrolling_text::ScrollingTextRe
     // Clean technical error info positioned to the right of QR code
     renderer.set_cursor(renderer.get_fb_width() / 12 + 100, renderer.get_fb_height() * 3 / 4 + 20);
     
-    // Show the actual panic message first
-    let panic_message = alloc::format!("{}", info.message());
-    if !panic_message.is_empty() {
-        use core::fmt::Write;
-        let mut writer_msg = scrolling_text::LineWriter::new();
-        let _ = write!(writer_msg, "Panic: {}", panic_message);
-        writer_msg.write_line();
-        renderer.write_line(b"");
-    }
+    // Show the actual panic message first - using simple string without format
+    let panic_message = "Panic occurred - check kernel logs";
+    renderer.write_line(panic_message.as_bytes());
+    renderer.write_line(b"");
     
     // Show detailed location information - clean and simple
     if let Some(location) = info.location() {
@@ -451,31 +484,18 @@ pub fn trigger_comprehensive_bsod(
     // Disable interrupts immediately to prevent re-entrancy
     x86_64::instructions::interrupts::disable();
     
-    // Create a comprehensive panic info structure
-    let panic_msg = if is_user_mode {
-        format!("[USER] {}: {} (would normally terminate process)", error_type, message)
-    } else {
-        format!("[KERNEL] {}: {}", error_type, message)
-    };
+    // Create comprehensive message without alloc
+    let prefix = if is_user_mode { "[USER] " } else { "[KERNEL] " };
     
-    // Additional diagnostic info
-    let mut detailed_msg = panic_msg.clone();
-    if let Some(rip_val) = rip {
-        detailed_msg.push_str(&format!(" | RIP: {:#x}", rip_val));
-    }
-    if let Some(error_val) = error_code {
-        detailed_msg.push_str(&format!(" | Error: {:#x}", error_val));
-    }
-    
-    // Log to serial/debug output first (in case framebuffer fails)
-    crate::serial::write_serial(&format!("FAULT: {}\n", detailed_msg));
+    // Log basic fault info (without detailed formatting to avoid alloc dependency)
+    // For now, we skip the serial output since it requires format! or we don't have access to it
     
     // Try to render comprehensive BSOD
     unsafe {
         if let Some(ref mut renderer) = scrolling_text::GLOBAL_RENDERER {
-            render_comprehensive_framebuffer_bsod(renderer, error_type, &detailed_msg, is_user_mode, rip, error_code);
+            render_comprehensive_framebuffer_bsod(renderer, error_type, message, is_user_mode, rip, error_code);
         } else {
-            render_comprehensive_vga_bsod(error_type, &detailed_msg, is_user_mode, rip, error_code);
+            render_comprehensive_vga_bsod(error_type, message, is_user_mode, rip, error_code);
         }
     }
     
@@ -544,10 +564,11 @@ unsafe fn render_comprehensive_vga_bsod(
             }
         }
         
-        // Display RIP in hex (simplified)
-        let rip_str = format!("{:#x}", rip_val);
+        // Display RIP in hex without format!
+        let mut rip_buf = [0u8; 18];
+        let rip_bytes = write_hex_to_buf(rip_val, &mut rip_buf);
         let rip_start = line6_start + rip_label.len();
-        for (i, byte) in rip_str.bytes().take(80 - rip_label.len()).enumerate() {
+        for (i, &byte) in rip_bytes.iter().take(80 - rip_label.len()).enumerate() {
             if rip_start + i < 80 * 25 {
                 vga_buffer.add(rip_start + i).write(0x1F00 | byte as u16);
             }
@@ -564,10 +585,11 @@ unsafe fn render_comprehensive_vga_bsod(
             }
         }
         
-        // Display error code in hex (simplified)
-        let error_str = format!("{:#x}", error_val);
+        // Display error code in hex without format!
+        let mut error_buf = [0u8; 18];
+        let error_bytes = write_hex_to_buf(error_val, &mut error_buf);
         let error_start = line8_start + error_label.len();
-        for (i, byte) in error_str.bytes().take(80 - error_label.len()).enumerate() {
+        for (i, &byte) in error_bytes.iter().take(80 - error_label.len()).enumerate() {
             if error_start + i < 80 * 25 {
                 vga_buffer.add(error_start + i).write(0x1F00 | byte as u16);
             }
@@ -613,7 +635,7 @@ unsafe fn render_comprehensive_framebuffer_bsod(
     error_code: Option<u64>
 ) {
     let windows_blue = 0xFF0037DA;
-    let white = 0xFFFFFFFF;
+    let _white = 0xFFFFFFFFu32;
     let red = 0xFFFF4444;
     let yellow = 0xFFFFFF00;
     let pitch = renderer.get_pitch();
@@ -628,26 +650,28 @@ unsafe fn render_comprehensive_framebuffer_bsod(
     let face_color = if is_user_mode { yellow } else { red };
     draw_clean_sad_face(fb_addr, pitch, width, height, face_color);
     
-    // Display comprehensive fault information
-    let fault_text = if is_user_mode {
-        format!("USER FAULT: {}", error_type)
-    } else {
-        format!("KERNEL FAULT: {}", error_type)
-    };
+    // Display comprehensive fault information without format!
+    let fault_prefix = if is_user_mode { "USER FAULT: " } else { "KERNEL FAULT: " };
     
+    // Create title without format - we'll write parts separately
     // Use the scrolling text renderer to display detailed info
     // Note: We don't clear the screen as the background is already set
-    renderer.write_line(fault_text.as_bytes());
+    renderer.write_line(fault_prefix.as_bytes());
+    renderer.write_line(error_type.as_bytes());
     renderer.write_line(b"");
     
     if let Some(rip_val) = rip {
-        let rip_line = format!("RIP: {:#x}", rip_val);
-        renderer.write_line(rip_line.as_bytes());
+        renderer.write_line(b"RIP: ");
+        let mut rip_buf = [0u8; 18];
+        let rip_bytes = write_hex_to_buf(rip_val, &mut rip_buf);
+        renderer.write_line(rip_bytes);
     }
     
     if let Some(error_val) = error_code {
-        let error_line = format!("Error Code: {:#x}", error_val);
-        renderer.write_line(error_line.as_bytes());
+        renderer.write_line(b"Error Code: ");
+        let mut error_buf = [0u8; 18];
+        let error_bytes = write_hex_to_buf(error_val, &mut error_buf);
+        renderer.write_line(error_bytes);
     }
     
     renderer.write_line(b"");

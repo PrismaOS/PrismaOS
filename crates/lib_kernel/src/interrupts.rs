@@ -4,6 +4,38 @@ use lazy_static::lazy_static;
 use crate::gdt;
 use crate::println;
 
+/// Simple hex formatter that doesn't require alloc
+fn write_hex_to_buf(val: u64, buf: &mut [u8; 18]) -> &[u8] {
+    const HEX_CHARS: &[u8] = b"0123456789ABCDEF";
+    buf[0] = b'0';
+    buf[1] = b'x';
+    
+    let mut pos = 2;
+    let mut temp = val;
+    let mut digits = [0u8; 16];
+    let mut digit_count = 0;
+    
+    // Extract digits
+    if temp == 0 {
+        digits[0] = 0;
+        digit_count = 1;
+    } else {
+        while temp > 0 {
+            digits[digit_count] = (temp % 16) as u8;
+            temp /= 16;
+            digit_count += 1;
+        }
+    }
+    
+    // Write digits in reverse order
+    for i in (0..digit_count).rev() {
+        buf[pos] = HEX_CHARS[digits[i] as usize];
+        pos += 1;
+    }
+    
+    &buf[0..pos]
+}
+
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
@@ -178,16 +210,18 @@ extern "x86-interrupt" fn page_fault_handler(
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
-    let details = format!(
-        "Page fault at address {:#x} - Write: {}, Present: {}", 
-        fault_address.as_u64(),
-        error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE),
-        error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION)
-    );
+    // Format address without alloc
+    let mut addr_buf = [0u8; 18];
+    let addr_str = write_hex_to_buf(fault_address.as_u64(), &mut addr_buf);
     
+    // Create message without format!
+    let write_str = if error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE) { "Write" } else { "Read" };
+    let present_str = if error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION) { "Present" } else { "NotPresent" };
+    
+    // Build a static message
     crate::utils::bsod::trigger_comprehensive_bsod(
         "PAGE_FAULT",
-        &details,
+        "Memory access violation - check logs for details",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code.bits() as u64)
@@ -202,11 +236,9 @@ extern "x86-interrupt" fn general_protection_fault_handler(
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
-    let details = format!("General protection fault - Error code: {:#x}", error_code);
-    
     crate::utils::bsod::trigger_comprehensive_bsod(
         "GENERAL_PROTECTION_FAULT",
-        &details,
+        "General protection fault - check logs for error code",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code)
@@ -221,7 +253,7 @@ extern "x86-interrupt" fn divide_error_handler(stack_frame: InterruptStackFrame)
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "DIVIDE_BY_ZERO_ERROR",
-        &format!("Division by zero at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "Division by zero error",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -249,7 +281,7 @@ extern "x86-interrupt" fn overflow_handler(stack_frame: InterruptStackFrame) {
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "INTEGER_OVERFLOW",
-        &format!("Arithmetic overflow at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "Arithmetic overflow error",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -262,7 +294,7 @@ extern "x86-interrupt" fn bound_range_exceeded_handler(stack_frame: InterruptSta
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "BOUND_RANGE_EXCEEDED",
-        &format!("Array bounds exceeded at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "Array bounds exceeded",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -275,7 +307,7 @@ extern "x86-interrupt" fn invalid_opcode_handler(stack_frame: InterruptStackFram
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "INVALID_OPCODE",
-        &format!("Invalid instruction at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "Invalid instruction",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -288,7 +320,7 @@ extern "x86-interrupt" fn device_not_available_handler(stack_frame: InterruptSta
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "DEVICE_NOT_AVAILABLE",
-        &format!("FPU/SIMD device not available at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "FPU/SIMD device not available",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -298,8 +330,7 @@ extern "x86-interrupt" fn device_not_available_handler(stack_frame: InterruptSta
 extern "x86-interrupt" fn invalid_tss_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     crate::utils::bsod::trigger_comprehensive_bsod(
         "INVALID_TSS",
-        &format!("Invalid Task State Segment - Error: {:#x}, RIP: {:#x}", 
-                error_code, stack_frame.instruction_pointer.as_u64()),
+        "Invalid Task State Segment",
         false, // TSS errors are always kernel-level
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code)
@@ -312,8 +343,7 @@ extern "x86-interrupt" fn segment_not_present_handler(stack_frame: InterruptStac
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "SEGMENT_NOT_PRESENT",
-        &format!("Segment not present - Selector: {:#x}, RIP: {:#x}", 
-                error_code, stack_frame.instruction_pointer.as_u64()),
+        "Segment not present",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code)
@@ -326,8 +356,7 @@ extern "x86-interrupt" fn stack_segment_fault_handler(stack_frame: InterruptStac
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "STACK_SEGMENT_FAULT",
-        &format!("Stack segment fault - Error: {:#x}, RIP: {:#x}", 
-                error_code, stack_frame.instruction_pointer.as_u64()),
+        "Stack segment fault",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code)
@@ -340,7 +369,7 @@ extern "x86-interrupt" fn x87_floating_point_handler(stack_frame: InterruptStack
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "X87_FLOATING_POINT_ERROR",
-        &format!("x87 FPU floating point error at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "x87 FPU floating point error",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -353,8 +382,7 @@ extern "x86-interrupt" fn alignment_check_handler(stack_frame: InterruptStackFra
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "ALIGNMENT_CHECK",
-        &format!("Memory alignment check failed - Error: {:#x}, RIP: {:#x}", 
-                error_code, stack_frame.instruction_pointer.as_u64()),
+        "Memory alignment check failed",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code)
@@ -378,7 +406,7 @@ extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: InterruptStac
     
     crate::utils::bsod::trigger_comprehensive_bsod(
         "SIMD_FLOATING_POINT_ERROR",
-        &format!("SIMD floating point error at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "SIMD floating point error",
         is_user_mode,
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -388,7 +416,7 @@ extern "x86-interrupt" fn simd_floating_point_handler(stack_frame: InterruptStac
 extern "x86-interrupt" fn virtualization_handler(stack_frame: InterruptStackFrame) {
     crate::utils::bsod::trigger_comprehensive_bsod(
         "VIRTUALIZATION_EXCEPTION",
-        &format!("Virtualization exception at RIP: {:#x}", stack_frame.instruction_pointer.as_u64()),
+        "Virtualization exception",
         false, // Virtualization exceptions are kernel-level
         Some(stack_frame.instruction_pointer.as_u64()),
         None
@@ -398,8 +426,7 @@ extern "x86-interrupt" fn virtualization_handler(stack_frame: InterruptStackFram
 extern "x86-interrupt" fn security_exception_handler(stack_frame: InterruptStackFrame, error_code: u64) {
     crate::utils::bsod::trigger_comprehensive_bsod(
         "SECURITY_EXCEPTION",
-        &format!("Security exception - Error: {:#x}, RIP: {:#x}", 
-                error_code, stack_frame.instruction_pointer.as_u64()),
+        "Security exception",
         false, // Security exceptions are kernel-level
         Some(stack_frame.instruction_pointer.as_u64()),
         Some(error_code)
