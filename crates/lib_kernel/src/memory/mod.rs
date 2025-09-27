@@ -6,6 +6,7 @@ use x86_64::{
 };
 
 // Unified memory management system
+pub mod aligned;
 pub mod unified_gdt;
 pub mod unified_allocator;
 pub mod unified_frame_allocator;
@@ -20,6 +21,7 @@ pub mod dma;
 //pub mod mmio;
 
 // Re-export unified interfaces
+pub use aligned::{Aligned16, Aligned8, Aligned4, PageAligned, AlignedBytes16, AlignedBytes8, AlignedBytes4, PageAlignedBytes, AlignedStack, AlignedHeap};
 pub use unified_gdt::{init as init_unified_gdt, get_selectors, setup_syscall_msrs, validate_gdt};
 pub use unified_allocator::{
     init_bootstrap_heap, init_kernel_heap, get_allocator_stats,

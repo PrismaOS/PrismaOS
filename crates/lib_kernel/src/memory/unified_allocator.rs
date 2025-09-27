@@ -26,11 +26,12 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 pub const HEAP_START: usize = 0xffff_8800_0000_0000;  // Higher half kernel heap
 pub const HEAP_SIZE: usize = 16 * 1024 * 1024; // 16 MiB - increased for complex systems
 
-/// Bootstrap heap for early allocations before virtual memory is set up
-#[repr(align(16))]
-struct BootstrapHeap([u8; 128 * 1024]); // 128KB - increased for more complex early allocations
+use super::aligned::AlignedHeap;
 
-static mut BOOTSTRAP_HEAP: BootstrapHeap = BootstrapHeap([0; 128 * 1024]);
+/// Bootstrap heap for early allocations before virtual memory is set up
+const BOOTSTRAP_HEAP_SIZE: usize = 128 * 1024; // 128KB - increased for more complex early allocations
+
+static mut BOOTSTRAP_HEAP: AlignedHeap<BOOTSTRAP_HEAP_SIZE> = AlignedHeap::zeroed();
 static BOOTSTRAP_ACTIVE: Mutex<bool> = Mutex::new(false);
 
 /// Memory allocation statistics
@@ -60,10 +61,13 @@ pub unsafe fn init_bootstrap_heap() -> Result<(), AllocationError> {
     }
     
     // Initialize the allocator with bootstrap heap
-    ALLOCATOR.lock().init(BOOTSTRAP_HEAP.0.as_mut_ptr(), BOOTSTRAP_HEAP.0.len());
+    let (heap_ptr, heap_len) = unsafe {
+        (BOOTSTRAP_HEAP.as_mut_ptr(), BOOTSTRAP_HEAP.len())
+    };
+    ALLOCATOR.lock().init(heap_ptr, heap_len);
     *active = true;
     
-    crate::kprintln!("    [INFO] Bootstrap heap initialized: {} KB", BOOTSTRAP_HEAP.0.len() / 1024);
+    crate::kprintln!("    [INFO] Bootstrap heap initialized: {} KB", heap_len / 1024);
     Ok(())
 }
 
@@ -188,7 +192,7 @@ pub fn init_kernel_heap(
 
 /// Get current allocator statistics
 pub fn get_allocator_stats() -> AllocatorStats {
-    let bootstrap_heap_size = unsafe { BOOTSTRAP_HEAP.0.len() };
+    let bootstrap_heap_size = BOOTSTRAP_HEAP_SIZE;
     AllocatorStats {
         total_heap_size: HEAP_SIZE,
         bootstrap_heap_size,

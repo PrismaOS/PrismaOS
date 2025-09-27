@@ -20,9 +20,10 @@ lazy_static! {
         // Set up double fault interrupt stack
         tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX as usize] = {
             const STACK_SIZE: usize = 4096 * 5; // 20KB stack
-            static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-            
-            let stack_start = VirtAddr::from_ptr(&raw const STACK);
+            use crate::memory::aligned::AlignedStack;
+            static mut STACK: AlignedStack<STACK_SIZE> = AlignedStack::zeroed();
+
+            let stack_start = VirtAddr::from_ptr(unsafe { STACK.as_ptr() });
             let stack_end = stack_start + STACK_SIZE as u64;
             stack_end
         };
@@ -236,10 +237,14 @@ pub fn validate_gdt() -> Result<(), &'static str> {
         return Err("TSS selector is null");
     }
     
-    // Verify SYSCALL layout requirements
-    let user_data_offset = (selectors.user_data.0 as i32) - (selectors.kernel_data.0 as i32);
-    let user_code_offset = (selectors.user_code.0 as i32) - (selectors.kernel_data.0 as i32);
-    
+    // Verify SYSCALL layout requirements using base selector values (without RPL)
+    let user_data_base = (selectors.user_data.index() as u16) * 8;
+    let user_code_base = (selectors.user_code.index() as u16) * 8;
+    let kernel_ds_base = selectors.kernel_data.0;
+
+    let user_data_offset = (user_data_base as i32) - (kernel_ds_base as i32);
+    let user_code_offset = (user_code_base as i32) - (kernel_ds_base as i32);
+
     if user_data_offset != 8 {
         return Err("User data selector offset incorrect for SYSCALL");
     }

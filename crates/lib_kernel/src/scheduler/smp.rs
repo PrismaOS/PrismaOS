@@ -81,14 +81,16 @@ pub struct CpuLocalData {
     pub interrupt_count: u64,
 }
 
+use crate::memory::aligned::Aligned16;
+
 /// Per-CPU data storage
-static mut PER_CPU_DATA: [Option<CpuLocalData>; 64] = [None; 64];
+static mut PER_CPU_DATA: Aligned16<[Option<CpuLocalData>; 64]> = Aligned16::new([None; 64]);
 
 /// Initialize per-CPU data structures
 fn init_per_cpu_data(cpu_count: usize) {
     for cpu_id in 0..cpu_count {
         unsafe {
-            PER_CPU_DATA[cpu_id] = Some(CpuLocalData {
+            PER_CPU_DATA.get_mut()[cpu_id] = Some(CpuLocalData {
                 cpu_id,
                 kernel_stack: allocate_kernel_stack(),
                 user_stack: 0,
@@ -105,7 +107,7 @@ fn init_per_cpu_data(cpu_count: usize) {
 pub fn current_cpu_data() -> Option<&'static mut CpuLocalData> {
     let cpu_id = current_cpu_id();
     unsafe {
-        PER_CPU_DATA.get_mut(cpu_id)?.as_mut()
+        PER_CPU_DATA.get_mut()[cpu_id].as_mut()
     }
 }
 
@@ -114,9 +116,9 @@ pub fn cpu_data(cpu_id: usize) -> Option<&'static mut CpuLocalData> {
     if cpu_id >= cpu_count() {
         return None;
     }
-    
+
     unsafe {
-        PER_CPU_DATA.get_mut(cpu_id)?.as_mut()
+        PER_CPU_DATA.get_mut()[cpu_id].as_mut()
     }
 }
 

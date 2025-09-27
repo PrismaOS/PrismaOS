@@ -74,36 +74,39 @@ impl Tss {
     }
 }
 
-static mut GDT: [GdtEntry; GDT_ENTRIES] = [GdtEntry::null(); GDT_ENTRIES];
+use crate::memory::aligned::Aligned16;
+static mut GDT: Aligned16<[GdtEntry; GDT_ENTRIES]> = Aligned16::new([GdtEntry::null(); GDT_ENTRIES]);
 static mut GDT_PTR: GdtPtr = GdtPtr { limit: 0, base: 0 };
 static mut KERNEL_TSS: Tss = Tss::new();
 
 unsafe fn gdt_set_entry(index: usize, base: u64, limit: u32, access: u8, gran: u8) {
     // Only the low 32-bit base fields are stored in the 8-byte entry.
     // For TSS (16-byte) we'll write a special descriptor.
-    GDT[index].base_low = (base & 0xFFFF) as u16;
-    GDT[index].base_middle = ((base >> 16) & 0xFF) as u8;
-    GDT[index].base_high = ((base >> 24) & 0xFF) as u8;
+    let gdt = GDT.get_mut();
+    gdt[index].base_low = (base & 0xFFFF) as u16;
+    gdt[index].base_middle = ((base >> 16) & 0xFF) as u8;
+    gdt[index].base_high = ((base >> 24) & 0xFF) as u8;
 
-    GDT[index].limit_low = (limit & 0xFFFF) as u16;
+    gdt[index].limit_low = (limit & 0xFFFF) as u16;
     // granularity low nibble holds top 4 bits of limit
-    GDT[index].granularity = (((limit >> 16) & 0x0F) as u8) | (gran & 0xF0);
-    GDT[index].access = access;
+    gdt[index].granularity = (((limit >> 16) & 0x0F) as u8) | (gran & 0xF0);
+    gdt[index].access = access;
 }
 
 /// Write a 16-byte TSS descriptor occupying entries index and index+1.
 unsafe fn gdt_set_tss(index: usize, tss_addr: u64, limit: u32, access: u8, gran: u8) {
     // First 8-byte descriptor (descriptor low)
-    GDT[index].limit_low = (limit & 0xFFFF) as u16;
-    GDT[index].base_low = (tss_addr & 0xFFFF) as u16;
-    GDT[index].base_middle = ((tss_addr >> 16) & 0xFF) as u8;
-    GDT[index].access = access;
-    GDT[index].granularity = (((limit >> 16) & 0x0F) as u8) | (gran & 0xF0);
-    GDT[index].base_high = ((tss_addr >> 24) & 0xFF) as u8;
+    let gdt = GDT.get_mut();
+    gdt[index].limit_low = (limit & 0xFFFF) as u16;
+    gdt[index].base_low = (tss_addr & 0xFFFF) as u16;
+    gdt[index].base_middle = ((tss_addr >> 16) & 0xFF) as u8;
+    gdt[index].access = access;
+    gdt[index].granularity = (((limit >> 16) & 0x0F) as u8) | (gran & 0xF0);
+    gdt[index].base_high = ((tss_addr >> 24) & 0xFF) as u8;
 
     // Second 8-byte descriptor (descriptor high) lives at index+1 and must contain
     // the high 32 bits of base and reserved fields. We'll cast the GDT slice into u64 words.
-    let entries_bytes = &mut *(GDT.as_mut_ptr() as *mut u8);
+    let entries_bytes = &mut *(gdt.as_mut_ptr() as *mut u8);
     // offset of second entry in bytes:
     let off = (index + 1) * size_of::<GdtEntry>();
     // write the high dword of base into the appropriate location:
@@ -121,7 +124,7 @@ unsafe fn gdt_set_tss(index: usize, tss_addr: u64, limit: u32, access: u8, gran:
 pub fn gdt_init() {
     unsafe {
         GDT_PTR.limit = (size_of::<GdtEntry>() * GDT_ENTRIES - 1) as u16;
-        GDT_PTR.base = &GDT as *const _ as u64;
+        GDT_PTR.base = GDT.get() as *const _ as u64;
 
         // Null descriptor
         gdt_set_entry(0, 0, 0, 0, 0);

@@ -39,7 +39,7 @@ ids_rs = { git = "https://github.com/tristanpoland/IDS_RS", rev = "07a057efb6ed7
 [profile.dev]
 panic = "abort"
 
-[profile.release] 
+[profile.release]
 panic = "abort"
 
 [profile.test]
