@@ -42,7 +42,7 @@ extern "C" {
 // This is the most critical part - any mistakes here will cause page faults!
 global_asm!(r#"
     .global syscall_entry_asm
-    .type syscall_entry_asm, @function
+    .align 16
 syscall_entry_asm:
     // SYSCALL instruction has already:
     // - Saved user RIP in RCX

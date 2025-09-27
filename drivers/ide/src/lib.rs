@@ -1,9 +1,9 @@
-// lib.rs - High-Performance IDE Driver  
+// lib.rs - High-Performance IDE Driver
 #![no_std]
 
 extern crate alloc;
 
-use lib_kernel::{api::commands::{inb, insw, outb, outsw}, kprintln};
+use lib_kernel::{api::commands::{inb, insw, outb, outsw, inw, read_port_words_safe}, kprintln};
 
 pub mod consts;
 pub mod types;
@@ -71,42 +71,36 @@ fn sleep(ms: u32) {
 
 #[inline(always)]
 fn ide_read(channel: u8, reg: u8) -> u8 {
-    unsafe {
-        // Skip control register access optimization for speed
-        let port: u16 = if reg < 0x08 {
-            CHANNELS[channel as usize].base + reg as u16
-        } else {
-            CHANNELS[channel as usize].ctrl + (reg - 0x08) as u16
-        };
-        inb(port)
-    }
+    // Skip control register access optimization for speed
+    let port: u16 = if reg < 0x08 {
+        unsafe { CHANNELS[channel as usize].base + reg as u16 }
+    } else {
+        unsafe { CHANNELS[channel as usize].ctrl + (reg - 0x08) as u16 }
+    };
+    unsafe { inb(port) }
 }
 
 #[inline(always)]
 fn ide_write(channel: u8, reg: u8, data: u8) {
-    unsafe {
-        // Skip control register access optimization for speed
-        let port: u16 = if reg < 0x08 {
-            CHANNELS[channel as usize].base + reg as u16
-        } else {
-            CHANNELS[channel as usize].ctrl + (reg - 0x08) as u16
-        };
-        outb(port, data);
-    }
+    // Skip control register access optimization for speed
+    let port: u16 = if reg < 0x08 {
+        unsafe { CHANNELS[channel as usize].base + reg as u16 }
+    } else {
+        unsafe { CHANNELS[channel as usize].ctrl + (reg - 0x08) as u16 }
+    };
+    unsafe { outb(port, data) };
 }
 
 fn ide_read_buffer(channel: u8, reg: u8, buffer: &mut [u8]) {
-    unsafe {
-        let port: u16 = if reg < 0x08 {
-            CHANNELS[channel as usize].base + reg as u16
-        } else {
-            CHANNELS[channel as usize].ctrl + (reg - 0x08) as u16
-        };
+    let port: u16 = if reg < 0x08 {
+        unsafe { CHANNELS[channel as usize].base + reg as u16 }
+    } else {
+        unsafe { CHANNELS[channel as usize].ctrl + (reg - 0x08) as u16 }
+    };
 
-        // Read words (16-bit) so we divide by 2
-        let words = buffer.len() / 2;
-        insw(port, buffer.as_mut_ptr() as *mut u16, words as u32);
-    }
+    // Read words (16-bit) so we divide by 2
+    let words = buffer.len() / 2;
+    unsafe { insw(port, buffer.as_mut_ptr() as *mut u16, words as u32) };
 }
 
 /* ============================================================================
@@ -120,49 +114,72 @@ pub fn ide_read_sectors(
     lba: u32,
     buf: &mut [u8]
 ) -> IdeResult<()> {
-    unsafe {
-        // Fast parameter validation
-        if drive > 3 {
-            return Err(IdeError::InvalidParameter);
-        }
-        
-        if IDE_DEVICES[drive as usize].reserved == 0 {
-            return Err(IdeError::DriveNotFound);
-        }
+    // Fast parameter validation
+    if drive > 3 {
+        return Err(IdeError::InvalidParameter);
+    }
 
-        // Check buffer size
-        let required_size = numsects as usize * 512;
-        if buf.len() < required_size {
+    if unsafe { IDE_DEVICES[drive as usize].reserved } == 0 {
+        return Err(IdeError::DriveNotFound);
+    }
+
+    // Check buffer size
+    let required_size = numsects as usize * 512;
+    if buf.len() < required_size {
+        return Err(IdeError::BufferTooSmall);
+    }
+
+    let device = unsafe { &IDE_DEVICES[drive as usize] };
+    let channel: u8 = device.channel;
+    let slavebit: u8 = device.drive;
+    let bus: u16;
+
+    unsafe { bus = CHANNELS[channel as usize].base; }
+
+    // Optimized LBA setup
+    let head: u8 = if lba >= 0x10000000 { 0 } else { ((lba >> 24) & 0x0F) as u8 };
+
+    // Fast drive selection
+    ide_write(channel, ATA_REG_HDDEVSEL, 0xE0 | (slavebit << 4) | head);
+
+    // Batch register writes for efficiency
+    ide_write(channel, ATA_REG_SECCOUNT0, numsects);
+    ide_write(channel, ATA_REG_LBA0, lba as u8);
+    ide_write(channel, ATA_REG_LBA1, (lba >> 8) as u8);
+    ide_write(channel, ATA_REG_LBA2, (lba >> 16) as u8);
+    ide_write(channel, ATA_REG_COMMAND, ATA_CMD_READ_PIO);
+
+    // Single bulk transfer for all sectors - MAXIMUM PERFORMANCE
+    ide_polling(channel, true)?;
+
+    // Safe sector-by-sector reading using safe wrapper
+    kprintln!("Reading {} sectors safely...", numsects);
+
+    for sector in 0..numsects {
+        let sector_offset = (sector as usize) * 512;
+
+        // Bounds check
+        if sector_offset + 512 > buf.len() {
+            kprintln!("Buffer overflow detected at sector {}", sector);
             return Err(IdeError::BufferTooSmall);
         }
 
-        let device = &IDE_DEVICES[drive as usize];
-        let channel: u8 = device.channel;
-        let slavebit: u8 = device.drive;
-        let bus: u16 = CHANNELS[channel as usize].base;
-        
-        // Optimized LBA setup
-        let head: u8 = if lba >= 0x10000000 { 0 } else { ((lba >> 24) & 0x0F) as u8 };
+        kprintln!("Reading sector {} at offset {}", sector, sector_offset);
 
-        // Fast drive selection
-        ide_write(channel, ATA_REG_HDDEVSEL, 0xE0 | (slavebit << 4) | head);
-
-        // Batch register writes for efficiency  
-        ide_write(channel, ATA_REG_SECCOUNT0, numsects);
-        ide_write(channel, ATA_REG_LBA0, lba as u8);
-        ide_write(channel, ATA_REG_LBA1, (lba >> 8) as u8);
-        ide_write(channel, ATA_REG_LBA2, (lba >> 16) as u8);
-        ide_write(channel, ATA_REG_COMMAND, ATA_CMD_READ_PIO);
-
-        // Single bulk transfer for all sectors - MAXIMUM PERFORMANCE
-        ide_polling(channel, true)?;
-        
-        // Read all sectors in one bulk operation
-        let total_words = (numsects as u32) * 256; // 256 words per sector
-        insw(bus, buf.as_mut_ptr() as *mut u16, total_words);
-
-        Ok(())
+        // Use safe wrapper to read one sector (512 bytes)
+        let sector_buf = &mut buf[sector_offset..sector_offset + 512];
+        match read_port_words_safe(bus, sector_buf) {
+            Ok(()) => kprintln!("Sector {} read successfully", sector),
+            Err(e) => {
+                kprintln!("Failed to read sector {}: {}", sector, e);
+                return Err(IdeError::InvalidParameter);
+            }
+        }
     }
+
+    kprintln!("All {} sectors read safely", numsects);
+
+    Ok(())
 }
 
 /* ============================================================================
@@ -181,7 +198,7 @@ pub fn ide_write_sectors(
         if drive > 3 {
             return Err(IdeError::InvalidParameter);
         }
-        
+
         if IDE_DEVICES[drive as usize].reserved == 0 {
             return Err(IdeError::DriveNotFound);
         }
@@ -215,7 +232,7 @@ pub fn ide_write_sectors(
 
         // Single bulk transfer for all sectors - MAXIMUM PERFORMANCE
         ide_polling(channel, false)?;
-        
+
         // Write all sectors in one bulk operation
         let total_words = (numsects as u32) * 256; // 256 words per sector
         outsw(bus, buf.as_ptr() as *const u16, total_words);
@@ -314,7 +331,7 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
 
         // Initialize device structure efficiently
         let device_index = (channel as usize) * 2 + drive as usize;
-        
+
         IDE_DEVICES[device_index] = IdeDevice::new();
         IDE_DEVICES[device_index].reserved = 1;
         IDE_DEVICES[device_index].channel = channel;
@@ -326,25 +343,25 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
         ide_read_buffer(channel, ATA_REG_DATA, &mut IDE_BUF[..512]);
 
         let buf_ptr_u16 = IDE_BUF.as_ptr() as *const u16;
-        
+
         if type_ == IDE_ATA {
             // Optimized ATA device setup
             IDE_DEVICES[device_index].signature = *buf_ptr_u16.add(0);
             IDE_DEVICES[device_index].capabilities = *buf_ptr_u16.add(49);
-            
+
             // Fast command set reading
             let cmd_set_low = *buf_ptr_u16.add(82) as u32;
             let cmd_set_high = *buf_ptr_u16.add(83) as u32;
             IDE_DEVICES[device_index].command_sets = cmd_set_low | (cmd_set_high << 16);
-            
+
             // Efficient size calculation
             let size_low = *buf_ptr_u16.add(60) as u32;
             let size_high = *buf_ptr_u16.add(61) as u32;
             let sectors_28bit = size_low | (size_high << 16);
-            
+
             // Check for 48-bit LBA support
             let supports_48bit = (IDE_DEVICES[device_index].command_sets & (1 << 26)) != 0;
-            
+
             if supports_48bit && sectors_28bit == 0xFFFFFFFF {
                 let lba48_0 = *buf_ptr_u16.add(100) as u64;
                 let lba48_1 = *buf_ptr_u16.add(101) as u64;
@@ -355,7 +372,7 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
             } else {
                 IDE_DEVICES[device_index].size = sectors_28bit;
             }
-            
+
             // Fast model string extraction
             for i in 0..20 {
                 let word = *buf_ptr_u16.add(ATA_IDENT_MODEL as usize / 2 + i);
@@ -363,13 +380,13 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
                 IDE_DEVICES[device_index].model[i * 2 + 1] = (word & 0xFF) as u8;
             }
             IDE_DEVICES[device_index].model[40] = 0;
-            
+
         } else if type_ == IDE_ATAPI {
             // Fast ATAPI setup
             IDE_DEVICES[device_index].signature = *buf_ptr_u16.add(0);
             IDE_DEVICES[device_index].capabilities = *buf_ptr_u16.add(49);
             IDE_DEVICES[device_index].size = 0;
-            
+
             // Fast model string for ATAPI
             for i in 0..20 {
                 let word = *buf_ptr_u16.add(ATA_IDENT_MODEL as usize / 2 + i);
@@ -390,7 +407,7 @@ fn ide_identify(channel: u8, drive: u8) -> IdeResult<()> {
 pub fn ide_initialize() -> IdeResult<()> {
     unsafe {
         kprintln!("Starting fast IDE initialization...");
-        
+
         // Fast channel setup
         for i in 0..2 {
             CHANNELS[i].n_ien = 0x02;
@@ -405,7 +422,7 @@ pub fn ide_initialize() -> IdeResult<()> {
         for i in 0..4 {
             let channel = (i / 2) as u8;
             let drive = (i % 2) as u8;
-            
+
             match ide_identify(channel, drive) {
                 Ok(()) => {},  // Skip verbose logging for speed
                 Err(_) => {},  // Skip error logging for speed
@@ -413,7 +430,7 @@ pub fn ide_initialize() -> IdeResult<()> {
         }
 
         kprintln!("Fast IDE initialization complete. Active devices:");
-        
+
         // Quick device summary
         for i in 0..4 {
             if IDE_DEVICES[i].reserved != 0 {
@@ -435,7 +452,7 @@ pub fn return_drive_size_bytes(drive: u8) -> IdeResult<u64> {
         }
 
         let device = &IDE_DEVICES[drive as usize];
-        
+
         if device.drive_type as u8 == IDE_ATA {
             Ok(device.size as u64 * 512)
         } else {

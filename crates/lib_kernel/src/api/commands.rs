@@ -159,6 +159,25 @@ pub unsafe fn insw(port: u16, buffer: *mut u16, count: u32) {
     }
 }
 
+/// Safe wrapper for reading words into a byte buffer with bounds checking
+pub fn read_port_words_safe(port: u16, buffer: &mut [u8]) -> Result<(), &'static str> {
+    if buffer.len() % 2 != 0 {
+        return Err("Buffer length must be even for 16-bit reads");
+    }
+
+    if buffer.len() > u32::MAX as usize * 2 {
+        return Err("Buffer too large");
+    }
+
+    for chunk in buffer.chunks_exact_mut(2) {
+        let word = unsafe { inw(port) };
+        chunk[0] = (word & 0xFF) as u8;
+        chunk[1] = (word >> 8) as u8;
+    }
+
+    Ok(())
+}
+
 /// Writes a 16-bit value to the specified I/O port.
 ///
 /// # Safety

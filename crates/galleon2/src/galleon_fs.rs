@@ -421,11 +421,45 @@ impl GalleonFilesystem {
         kprintln!("Mount!");
         kprintln!("Starting filesystem mount for drive {}", drive);
 
-        // Read super block
+        // Validate drive parameter
+        if drive > 3 {
+            kprintln!("Invalid drive number: {}", drive);
+            return Err(FilesystemError::InvalidParameter);
+        }
+
+        // Read super block with error recovery
         kprintln!("Reading super block from sector 1...");
         let mut sector = [0u8; 512];
-        ide_read_sectors(drive, 1, 0, &mut sector)?;
-        kprintln!("Super block sector read successfully");
+
+        // Clear sector buffer first for safety
+        for i in 0..512 {
+            sector[i] = 0;
+        }
+
+        kprintln!("Sector buffer cleared, attempting to read...");
+
+        match ide_read_sectors(drive, 1, 1, &mut sector) {
+            Ok(()) => {
+                kprintln!("Super block sector read successfully");
+
+                // Verify we actually got data (not all zeros)
+                let mut has_data = false;
+                for &byte in &sector[..64] {  // Check first 64 bytes for non-zero data
+                    if byte != 0 {
+                        has_data = true;
+                        break;
+                    }
+                }
+
+                if !has_data {
+                    kprintln!("Warning: Super block appears to be empty (all zeros)");
+                }
+            }
+            Err(e) => {
+                kprintln!("Failed to read super block: {:?}", e);
+                return Err(FilesystemError::from(e));
+            }
+        }
 
         kprintln!("Validating super block...");
         if !SuperBlock::is_valid(&sector) {

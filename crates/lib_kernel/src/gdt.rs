@@ -3,7 +3,7 @@ use x86_64::structures::tss::TaskStateSegment;
 use x86_64::{VirtAddr, PrivilegeLevel};
 use lazy_static::lazy_static;
 use crate::scheduler::process::ProcessContext;
-use crate::syscall::entry::syscall_entry;
+// use crate::syscall::entry::syscall_entry;
 
 pub const DOUBLE_FAULT_IST_INDEX: u16 = 0;
 
@@ -217,8 +217,8 @@ pub fn setup_syscall_msrs() {
             return;
         }
 
-        // Set up LSTAR register (syscall entry point)
-        LStar::write(VirtAddr::new(syscall_entry as u64));
+        // Set up LSTAR register (syscall entry point) - DISABLED FOR NOW
+        // LStar::write(VirtAddr::new(syscall_entry as u64));
 
         // Set up SFMASK register (flags to clear on syscall)
         SFMask::write(x86_64::registers::rflags::RFlags::INTERRUPT_FLAG);

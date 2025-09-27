@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod tests {
-    use alloc::{string::{String, ToString}, vec::Vec};
+    use alloc::{string::{String, ToString}, vec::Vec, vec};
     use crate::{
         galleon_fs::GalleonFilesystem,
         mft::{MftRecord, MftManager, AttributeType, Attribute, AttributeData},

@@ -43,7 +43,8 @@
       "Bash(timeout 30 cargo test)",
       "Bash(timeout 30 cargo check --package galleon2 --tests)",
       "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 30 cargo check --package kernel)",
-      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 60 cargo build --release)"
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 60 cargo build --release)",
+      "Read(//c/Users/redst/VirtualBox VMs/PrismaOS/Logs/**)"
     ],
     "deny": [],
     "ask": []
