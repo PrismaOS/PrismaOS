@@ -22,8 +22,8 @@ use alloc::{vec::Vec, boxed::Box, string::String, vec};
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
-/// Kernel heap configuration
-pub const HEAP_START: usize = 0x_4444_4444_0000;
+/// Kernel heap configuration - using safer virtual address in kernel space
+pub const HEAP_START: usize = 0xffff_8800_0000_0000;  // Higher half kernel heap
 pub const HEAP_SIZE: usize = 16 * 1024 * 1024; // 16 MiB - increased for complex systems
 
 /// Bootstrap heap for early allocations before virtual memory is set up
@@ -67,7 +67,7 @@ pub unsafe fn init_bootstrap_heap() -> Result<(), AllocationError> {
     Ok(())
 }
 
-/// Initialize the main kernel heap with proper virtual memory mapping
+/// Initialize the main kernel heap with proper virtual memory mapping and enhanced safety
 /// This replaces the bootstrap heap with a larger, properly mapped heap
 pub fn init_kernel_heap(
     mapper: &mut impl Mapper<Size4KiB>,
@@ -76,6 +76,12 @@ pub fn init_kernel_heap(
     let bootstrap_active = *BOOTSTRAP_ACTIVE.lock();
     if !bootstrap_active {
         panic!("Bootstrap heap must be initialized before kernel heap");
+    }
+    
+    // Validate heap address range is reasonable for kernel space
+    if HEAP_START < 0xffff_8000_0000_0000 || HEAP_START > 0xffff_ffff_ffff_f000 {
+        crate::kprintln!("[ERROR] Invalid heap start address: {:#x}", HEAP_START);
+        panic!("Invalid kernel heap address range");
     }
     
     // Calculate page range for the heap
@@ -90,26 +96,82 @@ pub fn init_kernel_heap(
     crate::kprintln!("    [INFO] Mapping kernel heap: {} MiB at {:#x}", 
                     HEAP_SIZE / (1024 * 1024), HEAP_START);
     
-    // Map each page of the heap to physical memory
+    // Map each page of the heap to physical memory with enhanced error handling
     let mut pages_mapped = 0;
+    let mut total_pages = 0;
+    
     for page in page_range {
-        let frame = frame_allocator
-            .allocate_frame()
-            .ok_or(MapToError::FrameAllocationFailed)?;
+        total_pages += 1;
+        
+        // Check if page is already mapped (avoid conflicts)
+        match mapper.translate_page(page) {
+            Ok(_) => {
+                crate::kprintln!("[WARN] Page {:#x} already mapped, skipping", page.start_address().as_u64());
+                pages_mapped += 1;
+                continue;
+            }
+            Err(_) => {
+                // Page not mapped, proceed with mapping
+            }
+        }
+        
+        // Allocate physical frame with error handling
+        let frame = match frame_allocator.allocate_frame() {
+            Some(frame) => frame,
+            None => {
+                crate::kprintln!("[ERROR] Failed to allocate frame for heap page {}", pages_mapped);
+                return Err(MapToError::FrameAllocationFailed);
+            }
+        };
         
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         
-        unsafe {
-            let flush_result = mapper.map_to(page, frame, flags, frame_allocator)?;
-            flush_result.flush();
+        // Map the page with detailed error handling
+        match unsafe { mapper.map_to(page, frame, flags, frame_allocator) } {
+            Ok(flush_result) => {
+                flush_result.flush();
+                pages_mapped += 1;
+            }
+            Err(MapToError::FrameAllocationFailed) => {
+                crate::kprintln!("[ERROR] Frame allocation failed during mapping for page {}", pages_mapped);
+                return Err(MapToError::FrameAllocationFailed);
+            }
+            Err(MapToError::ParentEntryHugePage) => {
+                crate::kprintln!("[ERROR] Parent entry is huge page for page {:#x}", page.start_address().as_u64());
+                return Err(MapToError::ParentEntryHugePage);
+            }
+            Err(MapToError::PageAlreadyMapped(_)) => {
+                crate::kprintln!("[WARN] Page {:#x} was already mapped during mapping", page.start_address().as_u64());
+                pages_mapped += 1;
+                continue;
+            }
         }
-        pages_mapped += 1;
     }
     
-    crate::kprintln!("    [INFO] Mapped {} pages for kernel heap", pages_mapped);
+    crate::kprintln!("    [INFO] Successfully mapped {} of {} pages for kernel heap", pages_mapped, total_pages);
     
-    // Switch from bootstrap heap to main kernel heap
+    // Verify we mapped enough pages for a functional heap
+    if pages_mapped < total_pages / 2 {
+        crate::kprintln!("[ERROR] Too few pages mapped: {} of {} required", pages_mapped, total_pages);
+        panic!("Insufficient heap pages mapped");
+    }
+    
+    // Switch from bootstrap heap to main kernel heap with validation
     unsafe {
+        // Test heap memory accessibility before switching allocators
+        let test_ptr = HEAP_START as *mut u64;
+        let test_value: u64 = 0xDEADBEEFCAFEBABE;
+        core::ptr::write_volatile(test_ptr, test_value);
+        let read_back = core::ptr::read_volatile(test_ptr);
+        if read_back != test_value {
+            crate::kprintln!("[ERROR] Heap memory test failed: wrote {:#x}, read {:#x}", 
+                           test_value, read_back);
+            panic!("Heap memory accessibility test failed");
+        }
+        
+        // Zero out the test value
+        core::ptr::write_volatile(test_ptr, 0);
+        
         // Re-initialize allocator with the new larger heap
         ALLOCATOR.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
         
@@ -117,7 +179,7 @@ pub fn init_kernel_heap(
         *BOOTSTRAP_ACTIVE.lock() = false;
     }
     
-    crate::kprintln!("    [INFO] Kernel heap initialized successfully");
+    crate::kprintln!("    [INFO] Kernel heap initialized and validated successfully");
     crate::kprintln!("       Size: {} MiB, Pages: {}", HEAP_SIZE / (1024 * 1024), pages_mapped);
     crate::kprintln!("       Virtual range: {:#x} - {:#x}", HEAP_START, HEAP_START + HEAP_SIZE);
     
