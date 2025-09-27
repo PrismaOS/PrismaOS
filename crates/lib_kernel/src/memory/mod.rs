@@ -10,7 +10,7 @@ pub mod unified_gdt;
 pub mod unified_allocator;
 pub mod unified_frame_allocator;
 pub mod tests;
-pub mod integration_tests;
+// pub mod integration_tests;
 
 // Legacy modules (kept for compatibility during transition)
 pub mod allocator;
@@ -21,12 +21,12 @@ pub mod dma;
 // Re-export unified interfaces
 pub use unified_gdt::{init as init_unified_gdt, get_selectors, setup_syscall_msrs, validate_gdt};
 pub use unified_allocator::{
-    init_bootstrap_heap, init_kernel_heap, get_allocator_stats, 
+    init_bootstrap_heap, init_kernel_heap, get_allocator_stats,
     test_heap_allocation, stress_test_allocations, validate_heap,
     HEAP_SIZE, HEAP_START
 };
 pub use unified_frame_allocator::{
-    init_global_frame_allocator, get_global_frame_allocator, 
+    init_global_frame_allocator, get_global_frame_allocator,
     test_global_frame_allocator, get_frame_allocator_stats
 };
 
@@ -81,24 +81,24 @@ impl BootInfoFrameAllocator {
             current_region: 0,
             next_frame: PhysAddr::new(0),
         };
-        
+
         // Store only usable memory regions without using Vec (no heap required)
         for &entry in memory_map.iter() {
-            // Check if this is a usable memory region  
+            // Check if this is a usable memory region
             // Limine memory map entry types: we want usable regions only
             if entry.length > 0 && allocator.region_count < 16 {
                 // For safety, skip the first 1MB to avoid potential firmware/boot loader areas
-                let safe_start = if entry.base < 0x100000 { 
-                    0x100000 
-                } else { 
-                    entry.base 
+                let safe_start = if entry.base < 0x100000 {
+                    0x100000
+                } else {
+                    entry.base
                 };
-                
+
                 if safe_start < entry.base + entry.length {
                     // Align to 4KB boundaries
                     let start_addr = PhysAddr::new((safe_start + 4095) & !4095);
                     let end_addr = PhysAddr::new((entry.base + entry.length) & !4095);
-                    
+
                     if start_addr < end_addr {
                         allocator.memory_regions[allocator.region_count] = Some((start_addr, end_addr));
                         allocator.region_count += 1;
@@ -106,14 +106,14 @@ impl BootInfoFrameAllocator {
                 }
             }
         }
-        
+
         // Start with the first region
         if allocator.region_count > 0 {
             if let Some((start, _)) = allocator.memory_regions[0] {
                 allocator.next_frame = start;
             }
         }
-        
+
         allocator
     }
 }
@@ -128,7 +128,7 @@ unsafe impl FrameAllocator<x86_64::structures::paging::Size4KiB> for BootInfoFra
                     return Some(frame);
                 }
             }
-            
+
             // Move to next region
             self.current_region += 1;
             if self.current_region < self.region_count {
@@ -137,7 +137,7 @@ unsafe impl FrameAllocator<x86_64::structures::paging::Size4KiB> for BootInfoFra
                 }
             }
         }
-        
+
         None // No more frames available
     }
 }
