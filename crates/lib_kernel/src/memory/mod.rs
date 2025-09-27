@@ -4,14 +4,33 @@ use x86_64::{
     },
     PhysAddr, VirtAddr,
 };
-// Removed alloc::vec::Vec import to avoid heap allocation during early boot
 
+// Unified memory management system
+pub mod unified_gdt;
+pub mod unified_allocator;
+pub mod unified_frame_allocator;
+pub mod tests;
+
+// Legacy modules (kept for compatibility during transition)
 pub mod allocator;
 pub mod paging;
 pub mod dma;
 //pub mod mmio;
 
-pub use allocator::{init_heap, init_bootstrap_heap, HEAP_SIZE, HEAP_START, heap_stats};
+// Re-export unified interfaces
+pub use unified_gdt::{init as init_unified_gdt, get_selectors, setup_syscall_msrs, validate_gdt};
+pub use unified_allocator::{
+    init_bootstrap_heap, init_kernel_heap, get_allocator_stats, 
+    test_heap_allocation, stress_test_allocations, validate_heap,
+    HEAP_SIZE, HEAP_START
+};
+pub use unified_frame_allocator::{
+    init_global_frame_allocator, get_global_frame_allocator, 
+    test_global_frame_allocator, get_frame_allocator_stats
+};
+
+// Legacy compatibility exports
+pub use allocator::{init_heap, heap_stats};
 //pub use mmio::{XhciMmioMapper, init_mmio_mapping, mmio_stats};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

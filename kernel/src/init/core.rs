@@ -1,15 +1,10 @@
 //! Core subsystem initialization
 //!
-//! Initializes bootstrap heap, GDT, IDT and PICs. These are required early
+//! Initializes bootstrap heap, unified GDT, IDT and PICs. These are required early
 //! in the boot flow and don't require the full virtual memory setup.
 
-/// Initialize core kernel subsystems that do not depend on complex memory
-/// layout. This includes bootstrap heap, GDT, IDT, PICs, and a very small
-/// scheduler initialization.
-
 use lib_kernel::{
-    memory,
-    gdt,
+    memory::{self, unified_gdt},
     interrupts::{self},
     consts::PICS,
     kprintln,
@@ -17,13 +12,20 @@ use lib_kernel::{
 
 pub fn init_core_subsystems() {
     // Bootstrap heap for early allocations
-    unsafe { memory::init_bootstrap_heap(); }
-    kprintln!("[OK] Bootstrap heap initialized (64KB)");
+    unsafe { 
+        if let Err(e) = memory::init_bootstrap_heap() {
+            panic!("Failed to initialize bootstrap heap: {:?}", e);
+        }
+    }
+    kprintln!("[OK] Bootstrap heap initialized (128KB)");
 
-    // Initialize GDT and IDT
-    gdt::init();
-    kprintln!("[OK] GDT initialized");
+    // Initialize unified GDT
+    match unified_gdt::init() {
+        Ok(()) => kprintln!("[OK] Unified GDT initialized"),
+        Err(e) => panic!("Failed to initialize GDT: {}", e),
+    }
 
+    // Initialize IDT
     interrupts::init_idt();
     kprintln!("[OK] IDT initialized");
 
