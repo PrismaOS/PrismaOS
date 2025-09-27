@@ -14,6 +14,7 @@ use crate::{
     memory::BootInfoFrameAllocator,
     kprintln,
 };
+use lib_kernel::memory::stack_protection;
 
 /// Userspace memory layout constants
 const USER_STACK_BASE: u64 = 0x7fff_ffff_0000;
@@ -44,10 +45,10 @@ pub fn load_and_execute_elf(
     let entry_point = elf_loader.entry_point();
     kprintln!("ELF loaded successfully, entry point: {:#x}", entry_point);
     
-    // Set up userspace stack
+    // Set up userspace stack with overflow protection
     setup_userspace_stack(mapper, frame_allocator)?;
-    
-    // Set up userspace heap  
+
+    // Set up userspace heap
     setup_userspace_heap(mapper, frame_allocator)?;
     
     kprintln!("Userspace memory layout configured");
@@ -87,8 +88,18 @@ fn setup_userspace_stack(
                 .flush();
         }
     }
-    
+
     kprintln!("Userspace stack mapped successfully");
+
+    // Set up stack overflow protection
+    let stack_bottom = VirtAddr::new(stack_start);
+    stack_protection::setup_userspace_stack_protection(
+        stack_bottom,
+        USER_STACK_SIZE as usize,
+        mapper,
+        frame_allocator,
+    )?;
+
     Ok(())
 }
 
@@ -188,19 +199,18 @@ fn execute_userspace(entry_point: u64) -> Result<(), &'static str> {
         
         kprintln!("📚 Building IRETQ frame on kernel stack...");
         
-        // CRITICAL: Let's use a much safer approach for now
-        // Instead of IRETQ which can cause VM crashes, let's just call the function directly
-        // to verify our memory setup is correct
-        
-        kprintln!("⚠️  SAFETY MODE: Calling userspace function directly instead of IRETQ");
-        kprintln!("   This avoids potential IRETQ stack frame issues that cause VM crashes");
-        
-        // Cast the entry point to a function and call it directly
-        // This bypasses the ring transition but tests our memory setup
-        let user_func: fn() = core::mem::transmute(entry_point as *const ());
-        
-        kprintln!("🚀 Executing userspace code...");
-        user_func();
+        // FIXED: Use proper privilege separation with the corrected GDT
+        kprintln!("🔒 Entering userspace with proper ring transition...");
+        kprintln!("   Entry: 0x{:016x}", entry_point);
+        kprintln!("   Stack: 0x{:016x}", user_stack);
+
+        // Use the corrected GDT implementation for safe userspace transition
+        unsafe {
+            lib_kernel::gdt_correct::enter_userspace(
+                VirtAddr::new(entry_point),
+                VirtAddr::new(user_stack)
+            );
+        }
         
         // This line should never be reached if our test program has an infinite loop
         kprintln!("❌ UNEXPECTED: Userspace function returned!");

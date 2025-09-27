@@ -7,9 +7,14 @@ use x86_64::{
 // Removed alloc::vec::Vec import to avoid heap allocation during early boot
 
 pub mod allocator;
+pub mod allocator_correct;
+pub mod frame_allocator_correct;
 pub mod paging;
 pub mod dma;
 //pub mod mmio;
+
+// Stack protection module
+pub mod stack_protection;
 
 pub use allocator::{init_heap, init_bootstrap_heap, HEAP_SIZE, HEAP_START, heap_stats};
 //pub use mmio::{XhciMmioMapper, init_mmio_mapping, mmio_stats};

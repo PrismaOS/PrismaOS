@@ -246,7 +246,7 @@ pub unsafe fn enable_syscalls() {
     use x86_64::registers::model_specific::{Msr, KernelGsBase, Star, LStar, SFMask};
 
     // STAR: Set up CS/SS for syscall/sysret
-    let star_value = (0x20u64 << 48) | (0x08u64 << 32);
+    let _star_value = (0x20u64 << 48) | (0x08u64 << 32);
     // Star::write(Star::from_bits_unchecked(star_value)); // Disabled due to API change
 
     // LSTAR: syscall entry point
@@ -257,7 +257,7 @@ pub unsafe fn enable_syscalls() {
 
     // Enable syscalls in EFER
     use x86_64::registers::model_specific::Efer;
-    let mut efer = Efer::read();
+    let efer = Efer::read();
     // efer |= Efer::SYSTEM_CALL_EXTENSIONS; // Commented out due to API change
     Efer::write(efer);
 }

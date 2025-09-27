@@ -21,7 +21,7 @@
 #![reexport_test_harness_main = "test_main"]
 #![allow(warnings)]
 
-use alloc::string::ToString;
+use alloc::{string::ToString, vec};
 use core::panic::PanicInfo;
 use lib_kernel::{consts::BASE_REVISION, kprintln, scrolling_text};
 
@@ -123,15 +123,23 @@ unsafe extern "C" fn kmain() -> ! {
         }
     }
 
-    kprintln!("Proceeding with Galleon2 filesystem initialization...");
+    kprintln!("=== SIMPLE FILESYSTEM TEST ===");
 
-    // Try to mount existing filesystem, or format a new one
-    kprintln!("About to call GalleonFilesystem::mount(0)...");
-    kprintln!("DEBUG: Function call preparation complete");
-    kprintln!("DEBUG: Calling GalleonFilesystem::mount with parameter 0");
+    // First, test if we can even call the filesystem module
+    kprintln!("TEST 1: Can we access filesystem module?");
 
+    // Simple test: try to call a basic function first
+    kprintln!("TEST 2: Testing simple operations...");
+
+    // Create a small test buffer on heap (not stack)
+    kprintln!("TEST 3: Creating test buffer...");
+    let test_buf = vec![0u8; 64];
+    kprintln!("TEST 4: Test buffer created successfully: {} bytes", test_buf.len());
+
+    // Now try the actual mount
+    kprintln!("TEST 5: About to call mount...");
     let mount_result = GalleonFilesystem::mount(0);
-    kprintln!("DEBUG: GalleonFilesystem::mount(0) returned");
+    kprintln!("TEST 6: Mount call returned");
 
     let mut filesystem = match mount_result {
         Ok(fs) => {

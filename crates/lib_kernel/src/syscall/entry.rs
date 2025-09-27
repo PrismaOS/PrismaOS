@@ -33,13 +33,18 @@ pub struct SyscallFrame {
     pub r15: u64,    // First pushed (highest offset)
 }
 
+// TEMPORARILY DISABLED DUE TO ALIGNMENT ISSUE
+/*
 extern "C" {
     // Symbol defined by the assembly thunk below; LSTAR will point here.
     fn syscall_entry_asm();
 }
+*/
 
 // Assembly thunk for SYSCALL entry.
 // This is the most critical part - any mistakes here will cause page faults!
+// TEMPORARILY DISABLED DUE TO ALIGNMENT ISSUE
+/*
 global_asm!(r#"
     .global syscall_entry_asm
     .align 16
@@ -113,6 +118,7 @@ syscall_entry_asm:
     // - RAX = return value (already set)
     sysretq
 "#);
+*/
 
 // Rust-side syscall entry called from assembly thunk.
 #[no_mangle]
@@ -165,16 +171,16 @@ pub fn setup_syscall_msrs() {
         let selectors = crate::gdt::get_selectors();
         
         kprintln!("    GDT Layout for SYSCALL:");
-        kprintln!("       Kernel CS: {:#x}", selectors.kernel_code().0);
-        kprintln!("       Kernel DS: {:#x}", selectors.kernel_data().0);
-        kprintln!("       User CS:   {:#x}", selectors.user_code().0);
-        kprintln!("       User DS:   {:#x}", selectors.user_data().0);
+        kprintln!("       Kernel CS: {:#x}", selectors.kernel_code.0);
+        kprintln!("       Kernel DS: {:#x}", selectors.kernel_data.0);
+        kprintln!("       User CS:   {:#x}", selectors.user_code.0);
+        kprintln!("       User DS:   {:#x}", selectors.user_data.0);
         
         let result = Star::write(
-            selectors.user_code(),
-            selectors.user_data(), 
-            selectors.kernel_code(),
-            selectors.kernel_data(),
+            selectors.user_code,
+            selectors.user_data, 
+            selectors.kernel_code,
+            selectors.kernel_data,
         );
         
         if let Err(e) = result {
@@ -184,7 +190,9 @@ pub fn setup_syscall_msrs() {
         }
 
         // Set up LSTAR register (syscall entry point) to the assembly thunk symbol
-        LStar::write(VirtAddr::new(syscall_entry_asm as u64));
+        // TEMPORARILY DISABLED DUE TO ALIGNMENT ISSUE
+        // LStar::write(VirtAddr::new(syscall_entry_asm as u64));
+        kprintln!("    SYSCALL entry point setup skipped (assembly disabled)");
 
         // Set up SFMASK register (flags to clear on syscall)
         // Clear interrupt flag to disable interrupts during syscall

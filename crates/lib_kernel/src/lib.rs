@@ -19,4 +19,5 @@ pub mod font;
 pub mod time;
 pub mod elf;
 pub mod gdt;
+pub mod gdt_correct;
 pub mod api;

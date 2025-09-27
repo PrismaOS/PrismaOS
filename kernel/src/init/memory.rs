@@ -28,11 +28,9 @@ pub fn init_memory_and_heap() -> Result<(), &'static str> {
             let (mut mapper, mut frame_allocator) = memory::init_memory(memory_entries, phys_mem_offset);
 
             kprintln!("[INFO] Initializing kernel heap: {} MiB at {:#x}", memory::HEAP_SIZE / (1024 * 1024), memory::HEAP_START);
-            match memory::init_heap(&mut mapper, &mut frame_allocator) {
+            match unsafe { memory::init_heap(&mut mapper, &mut frame_allocator)} {
                 Ok(_) => {
                     kprintln!("[OK] Kernel heap initialized with proper virtual memory mapping");
-                    let stats = memory::heap_stats();
-                    kprintln!("     Heap size: {} MiB, Start: {:#x}", stats.total_size / (1024 * 1024), memory::HEAP_START);
                 }
                 Err(_) => {
                     return Err("Failed to initialize kernel heap");
