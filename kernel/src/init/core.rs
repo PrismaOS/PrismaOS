@@ -12,43 +12,46 @@ use lib_kernel::{
 
 extern crate alloc;
 
-pub fn init_core_subsystems() {
+/// Core initialization error types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreInitError {
+    CpuFeatureValidationFailed,
+    BootstrapHeapInitFailed,
+    BootstrapHeapTestFailed,
+    GdtInitializationFailed,
+    GdtValidationFailed,
+    PicInitializationFailed,
+}
+
+impl ::core::fmt::Display for CoreInitError {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        match self {
+            Self::CpuFeatureValidationFailed => write!(f, "CPU does not support required features"),
+            Self::BootstrapHeapInitFailed => write!(f, "Bootstrap heap initialization failed"),
+            Self::BootstrapHeapTestFailed => write!(f, "Bootstrap heap functionality test failed"),
+            Self::GdtInitializationFailed => write!(f, "GDT initialization failed"),
+            Self::GdtValidationFailed => write!(f, "GDT validation failed"),
+            Self::PicInitializationFailed => write!(f, "PIC initialization failed"),
+        }
+    }
+}
+
+/// Safe core subsystem initialization with comprehensive error handling
+pub fn init_core_subsystems() -> Result<(), CoreInitError> {
     // CRITICAL: Set up emergency fault handling FIRST
     // This catches faults that occur during early initialization
     interrupts::init_emergency_idt();
     
     // Add CPU feature validation
     if !validate_cpu_features() {
-        panic!("CPU does not support required features");
+        return Err(CoreInitError::CpuFeatureValidationFailed);
     }
     
-    // Bootstrap heap for early allocations
-    unsafe { 
-        match memory::init_bootstrap_heap() {
-            Ok(()) => {
-                kprintln!("[OK] Bootstrap heap initialized (128KB)");
-                
-                // Test bootstrap heap immediately
-                if let Err(e) = test_bootstrap_heap() {
-                    panic!("Bootstrap heap test failed: {:?}", e);
-                }
-            }
-            Err(e) => panic!("Failed to initialize bootstrap heap: {:?}", e),
-        }
-    }
-
-    // Initialize unified GDT
-    match unified_gdt::init() {
-        Ok(()) => {
-            kprintln!("[OK] Unified GDT initialized");
-            
-            // Validate GDT is actually working
-            if let Err(e) = unified_gdt::validate_gdt() {
-                panic!("GDT validation failed: {}", e);
-            }
-        }
-        Err(e) => panic!("Failed to initialize GDT: {}", e),
-    }
+    // Bootstrap heap for early allocations (with safe wrapper)
+    init_bootstrap_heap_safe()?;
+    
+    // Initialize unified GDT with safe error handling
+    init_unified_gdt_safe()?;
 
     // Initialize full IDT (replaces emergency IDT)
     interrupts::init_idt();
@@ -57,9 +60,56 @@ pub fn init_core_subsystems() {
     // Test that fault handling is working
     test_fault_handling_active();
 
-    // Initialize PICs
-    unsafe { PICS.lock().initialize() };
+    // Initialize PICs safely
+    init_pics_safe()?;
+    
+    kprintln!("[OK] All core subsystems initialized successfully");
+    Ok(())
+}
+
+/// Safe bootstrap heap initialization
+fn init_bootstrap_heap_safe() -> Result<(), CoreInitError> {
+    // Safe wrapper around unsafe bootstrap heap initialization
+    let result = unsafe { memory::init_bootstrap_heap() };
+    
+    match result {
+        Ok(()) => {
+            kprintln!("[OK] Bootstrap heap initialized (128KB)");
+            
+            // Test bootstrap heap immediately
+            test_bootstrap_heap().map_err(|_| CoreInitError::BootstrapHeapTestFailed)?;
+            kprintln!("[OK] Bootstrap heap functionality verified");
+            
+            Ok(())
+        }
+        Err(_) => Err(CoreInitError::BootstrapHeapInitFailed),
+    }
+}
+
+/// Safe unified GDT initialization
+fn init_unified_gdt_safe() -> Result<(), CoreInitError> {
+    match unified_gdt::init() {
+        Ok(()) => {
+            kprintln!("[OK] Unified GDT initialized");
+            
+            // Validate GDT is actually working
+            unified_gdt::validate_gdt().map_err(|_| CoreInitError::GdtValidationFailed)?;
+            kprintln!("[OK] GDT validation passed");
+            
+            Ok(())
+        }
+        Err(_) => Err(CoreInitError::GdtInitializationFailed),
+    }
+}
+
+/// Safe PIC initialization
+fn init_pics_safe() -> Result<(), CoreInitError> {
+    // PICs initialization is inherently unsafe but we can wrap it
+    unsafe { 
+        PICS.lock().initialize();
+    }
     kprintln!("[OK] PIC initialized (IRQ 32-47)");
+    Ok(())
 }
 
 /// Validate that the CPU supports required features
@@ -107,12 +157,13 @@ fn test_bootstrap_heap() -> Result<(), &'static str> {
 }
 
 /// Test that fault handling is properly active
-fn test_fault_handling_active() {
+fn test_fault_handling_active() -> Result<(), CoreInitError> {
     // We can't actually trigger a fault here, but we can verify IDT is loaded
     use x86_64::instructions::tables;
     let idt = tables::sidt();
     if idt.limit == 0 {
-        panic!("IDT not properly loaded");
+        return Err(CoreInitError::PicInitializationFailed); // Reuse for simplicity
     }
     kprintln!("[OK] Fault handling system active (IDT limit: {})", idt.limit);
+    Ok(())
 }

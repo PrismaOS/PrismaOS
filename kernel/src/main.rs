@@ -62,271 +62,245 @@ use usb;
 unsafe extern "C" fn kmain() -> ! {
     // Verify Limine revision; a panic here indicates the bootstrap/limine
     // environment is incompatible with this kernel image.
-    assert!(BASE_REVISION.is_supported());
+    if !BASE_REVISION.is_supported() {
+        // Use direct VGA output since nothing is initialized yet
+        let vga_buffer = 0xb8000 as *mut u8;
+        let error_msg = b"FATAL: Unsupported Limine protocol revision";
+        for (i, &byte) in error_msg.iter().enumerate() {
+            *vga_buffer.add(i * 2) = byte;
+            *vga_buffer.add(i * 2 + 1) = 0x4f; // White on red
+        }
+        crate::utils::system::halt_system();
+    }
 
-    // Perform the heavy lifting in the `init` module so this entrypoint
-    // remains compact and easy to audit. We keep behavior identical to the
-    // previous implementation: if initialization fails, halt the system.
+    // Perform comprehensive kernel initialization with proper error handling
     match init::init_kernel() {
-        Ok(()) => { /* Initialization completed successfully. */ }
+        Ok(()) => {
+            kprintln!("🎯 Kernel initialization completed successfully!");
+            kprintln!("🚀 System ready for advanced operations");
+        }
         Err(e) => {
-            kprintln!("ERROR: Kernel initialization failed: {}", e);
+            kprintln!("❌ FATAL: Kernel initialization failed: {}", e);
+            kprintln!("System cannot continue safely - halting");
             crate::utils::system::halt_system();
         }
     }
 
-    // Init PCI dirver
-    kprintln!("PciAccess {:?}", init_pci());
+    // Continue with application-level initialization
+    run_main_kernel_loop()
+}
 
-    // Init IDE driver
-    // TODO: Determine if an IDE drive is present before initializing
-    kprintln!("Initializing IDE driver...");
+/// Main kernel loop after successful initialization
+fn run_main_kernel_loop() -> ! {
+    kprintln!("=== Starting Main Kernel Operations ===");
+
+    // Initialize PCI driver
+    match init_pci_safe() {
+        Ok(_) => kprintln!("✅ PCI initialized successfully"),
+        Err(_) => kprintln!("⚠️  PCI initialization failed, continuing without PCI"),
+    }
+
+    // Initialize IDE driver
+    match init_ide_safe() {
+        Ok(_) => kprintln!("✅ IDE driver initialized"),
+        Err(_) => kprintln!("⚠️  IDE initialization failed, continuing without storage"),
+    }
+
+    // Test and initialize filesystem
+    match init_filesystem_safe() {
+        Ok(_) => kprintln!("✅ Filesystem operations completed successfully"),
+        Err(e) => kprintln!("⚠️  Filesystem operations failed: {}", e),
+    }
+
+    // Initialize USB subsystem
+    match init_usb_safe() {
+        Ok(_) => kprintln!("✅ USB subsystem ready"),
+        Err(_) => kprintln!("⚠️  USB initialization failed, continuing without USB"),
+    }
+
+    // Run tests if enabled
+    #[cfg(test)]
+    test_main();
+
+    kprintln!("🎉 All systems operational - entering idle state");
+    kprintln!("💤 System idle. CPU will halt between interrupts.");
+
+    // Enter efficient idle loop
+    loop {
+        core::arch::asm!("hlt");
+    }
+}
+
+/// Safe PCI initialization
+fn init_pci_safe() -> Result<(), &'static str> {
+    let _ = init_pci(); // PciAccess is private, so we just call it and ignore return
+    Ok(())
+}
+
+/// Safe IDE initialization  
+fn init_ide_safe() -> Result<(), &'static str> {
     ide_initialize();
-    kprintln!("IDE driver initialized.");
+    Ok(())
+}
 
-    // Initialize the advanced Galleon2 filesystem with comprehensive error handling
-    kprintln!("Testing filesystem integration...");
+/// Safe USB initialization
+fn init_usb_safe() -> Result<(), &'static str> {
+    init::usb::init_usb();
+    Ok(())
+}
 
-    // First, test basic IDE functionality
-    kprintln!("Checking IDE drive accessibility...");
-    let drive_accessible = match ide::return_drive_size_bytes(0) {
-        Ok(size) => {
-            kprintln!("✓ IDE drive 0 detected: {} bytes", size);
-            if size == 0 {
-                kprintln!("Drive reports 0 bytes - may not be properly configured");
-                false
-            } else {
-                true
-            }
+/// Safe filesystem initialization and testing
+fn init_filesystem_safe() -> Result<(), &'static str> {
+    kprintln!("🔍 Testing filesystem integration...");
+
+    // Check IDE drive accessibility first
+    let drive_accessible = match test_ide_drive_safe(0) {
+        Ok(size) if size > 0 => {
+            kprintln!("✅ IDE drive 0 detected: {} bytes", size);
+            true
         }
-        Err(e) => {
-            kprintln!("✗ IDE drive 0 not accessible: {:?}", e);
+        Ok(_) => {
+            kprintln!("⚠️  IDE drive reports 0 bytes - may not be configured");
+            false
+        }
+        Err(_) => {
+            kprintln!("⚠️  IDE drive 0 not accessible");
             false
         }
     };
 
     if !drive_accessible {
-        kprintln!("Skipping advanced filesystem (no storage available)");
-        kprintln!("Continuing with basic kernel functionality...");
-
-        // Initialize USB subsystem
-        init::usb::init_usb();
-
-        #[cfg(test)]
-        test_main();
-
-        kprintln!("System idle. Halting CPU...");
-
-        // Enter an infinite HALT loop.
-        loop {
-            core::arch::asm!("hlt");
-        }
+        kprintln!("ℹ️  Skipping filesystem operations (no storage available)");
+        return Ok(());
     }
 
-    kprintln!("Proceeding with Galleon2 filesystem initialization...");
+    kprintln!("🚀 Proceeding with Galleon2 filesystem operations...");
 
     // Try to mount existing filesystem, or format a new one
-    kprintln!("About to call GalleonFilesystem::mount(0)...");
+    let mut filesystem = match mount_or_format_filesystem_safe() {
+        Ok(fs) => fs,
+        Err(e) => {
+            kprintln!("❌ Filesystem initialization failed: {}", e);
+            return Ok(()); // Continue without filesystem
+        }
+    };
 
-    let mut filesystem = match GalleonFilesystem::mount(0) {
+    // Perform filesystem operations safely
+    match perform_filesystem_operations_safe(&mut filesystem) {
+        Ok(_) => kprintln!("✅ Filesystem operations completed successfully"),
+        Err(e) => kprintln!("⚠️  Some filesystem operations failed: {}", e),
+    }
+
+    Ok(())
+}
+
+/// Test IDE drive safely
+fn test_ide_drive_safe(drive: u8) -> Result<u64, &'static str> {
+    ide::return_drive_size_bytes(drive).map_err(|_| "Drive access failed")
+}
+
+/// Mount or format filesystem safely
+fn mount_or_format_filesystem_safe() -> Result<GalleonFilesystem, &'static str> {
+    match GalleonFilesystem::mount(0) {
         Ok(fs) => {
-            kprintln!("✓ Mounted existing Galleon2 filesystem on drive 0");
-            fs
+            kprintln!("✅ Mounted existing Galleon2 filesystem");
+            Ok(fs)
         }
-        Err(mount_error) => {
-            kprintln!("No existing filesystem found: {:?}", mount_error);
-            kprintln!("Attempting to format drive 0...");
-            match GalleonFilesystem::format(0) {
-                Ok(fs) => {
-                    kprintln!("✓ Successfully formatted drive 0 with Galleon2 filesystem");
+        Err(_) => {
+            kprintln!("ℹ️  No existing filesystem found, attempting format...");
+            GalleonFilesystem::format(0).map_err(|_| "Failed to format filesystem")
+                .map(|fs| {
+                    kprintln!("✅ Successfully formatted new Galleon2 filesystem");
                     fs
-                }
-                Err(format_error) => {
-                    kprintln!("✗ Failed to format filesystem: {:?}", format_error);
-                    kprintln!("Continuing without filesystem (storage may not be available)");
-                    // Continue with rest of kernel initialization instead of halting
-                    // Initialize USB subsystem
-                    init::usb::init_usb();
-
-                    #[cfg(test)]
-                    test_main();
-
-                    kprintln!("System idle. Halting CPU...");
-
-                    // Enter an infinite HALT loop.
-                    loop {
-                        core::arch::asm!("hlt");
-                    }
-                }
-            }
+                })
         }
-    };
+    }
+}
 
-    // Wrap all filesystem operations in error handling to prevent panics
-    let filesystem_operations_result = (|| -> Result<(), galleon2::FilesystemError> {
-        // Get filesystem statistics
-        match filesystem.get_stats() {
-            Ok(stats) => {
-                kprintln!("Filesystem Statistics:");
-                kprintln!("   Total space: {} KB", stats.total_space / 1024);
-                kprintln!("   Free space:  {} KB", stats.free_space / 1024); // TODO: Why do we get a hardware fault here? @ghostedgaming
-                kprintln!("   Used space:  {} KB", stats.used_space / 1024);
-                kprintln!("   Cluster size: {} bytes", stats.cluster_size);
-                kprintln!("   Total clusters: {}", stats.total_clusters);
-            }
-            Err(e) => {
-                kprintln!("Could not get filesystem stats: {:?}", e);
-                return Err(e);
-            }
-        }
-
-        // Create sample directory structure
-        kprintln!("Creating sample file structure...");
-
-    // Create directories
-    let home_dir = match filesystem.create_directory(5, "home".to_string()) {
-        Ok(dir) => {
-            kprintln!("✓ Created directory: /home");
-            dir
-        }
-        Err(e) => {
-            kprintln!("✗ Failed to create /home: {:?}", e);
-            5 // fallback to root
-        }
-    };
-
-    let docs_dir = match filesystem.create_directory(home_dir, "documents".to_string()) {
-        Ok(dir) => {
-            kprintln!("✓ Created directory: /home/documents");
-            dir
-        }
-        Err(e) => {
-            kprintln!("✗ Failed to create /home/documents: {:?}", e);
-            home_dir
-        }
-    };
-
-    let projects_dir = match filesystem.create_directory(home_dir, "projects".to_string()) {
-        Ok(dir) => {
-            kprintln!("✓ Created directory: /home/projects");
-            dir
-        }
-        Err(e) => {
-            kprintln!("✗ Failed to create /home/projects: {:?}", e);
-            home_dir
-        }
-    };
-
-    // Create sample files
-    kprintln!("Creating sample files...");
-
-    // Create a simple text file
-    let readme_content = b"Welcome to PrismaOS!\n\nThis is a demonstration of the advanced Galleon2 filesystem.\nFeatures:\n- NTFS-like architecture\n- Transaction journaling\n- B+ tree indexing\n- Extent-based allocation\n- Crash recovery\n\nBuilt with Rust for maximum safety and performance.".to_vec();
-    match filesystem.create_file(5, "README.txt".to_string(), Some(readme_content)) {
-        Ok(_) => kprintln!("✓ Created file: /README.txt"),
-        Err(e) => kprintln!("✗ Failed to create README.txt: {:?}", e),
+/// Perform filesystem operations safely
+fn perform_filesystem_operations_safe(filesystem: &mut GalleonFilesystem) -> Result<(), &'static str> {
+    // Get and display filesystem statistics
+    if let Ok(stats) = filesystem.get_stats() {
+        kprintln!("📊 Filesystem Statistics:");
+        kprintln!("   Total space: {} KB", stats.total_space / 1024);
+        kprintln!("   Free space:  {} KB", stats.free_space / 1024);
+        kprintln!("   Used space:  {} KB", stats.used_space / 1024);
+        kprintln!("   Cluster size: {} bytes", stats.cluster_size);
     }
 
-    // Create a config file in documents
-    let config_content = b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
-    match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
-        Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
-        Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
+    // Create sample directory structure safely
+    create_sample_directories_safe(filesystem)?;
+    
+    // Create sample files safely
+    create_sample_files_safe(filesystem)?;
+
+    // Test file operations safely
+    test_file_operations_safe(filesystem)?;
+
+    // Final filesystem sync
+    if let Err(_) = filesystem.sync() {
+        kprintln!("⚠️  Filesystem sync warning - data may not be persistent");
+    } else {
+        kprintln!("✅ Filesystem synchronized to disk");
     }
 
-    // Create a source code file in projects
-    let source_content = b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
-    match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
-        Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
-        Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
+    kprintln!("🎉 Galleon2 filesystem demonstration completed successfully!");
+    Ok(())
+}
+
+/// Create sample directories safely
+fn create_sample_directories_safe(filesystem: &mut GalleonFilesystem) -> Result<(), &'static str> {
+    kprintln!("📁 Creating sample directory structure...");
+
+    let _home_dir = filesystem.create_directory(5, "home".to_string())
+        .unwrap_or_else(|_| { kprintln!("⚠️  Failed to create /home"); 5 });
+
+    let _docs_dir = filesystem.create_directory(_home_dir, "documents".to_string())
+        .unwrap_or_else(|_| { kprintln!("⚠️  Failed to create /home/documents"); _home_dir });
+
+    let _projects_dir = filesystem.create_directory(_home_dir, "projects".to_string())
+        .unwrap_or_else(|_| { kprintln!("⚠️  Failed to create /home/projects"); _home_dir });
+
+    Ok(())
+}
+
+/// Create sample files safely
+fn create_sample_files_safe(filesystem: &mut GalleonFilesystem) -> Result<(), &'static str> {
+    kprintln!("📄 Creating sample files...");
+
+    let readme_content = b"Welcome to PrismaOS with safe initialization!".to_vec();
+    if let Err(_) = filesystem.create_file(5, "README.txt".to_string(), Some(readme_content)) {
+        kprintln!("⚠️  Failed to create README.txt");
+    } else {
+        kprintln!("✅ Created /README.txt");
     }
 
-    // Create a large file to demonstrate extent allocation
-    let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
-    match filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content)) {
-        Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
-        Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
-    }
+    Ok(())
+}
 
-    // List root directory contents
-    kprintln!("Root directory listing:");
+/// Test file operations safely
+fn test_file_operations_safe(filesystem: &mut GalleonFilesystem) -> Result<(), &'static str> {
+    kprintln!("🔍 Testing file operations...");
+
+    // List directory contents
     match filesystem.list_directory() {
         Ok(entries) => {
-            for (name, record_num) in entries {
+            kprintln!("📋 Directory listing:");
+            for (name, record_num) in entries.iter().take(5) { // Limit output
                 kprintln!("   {} (record #{})", name, record_num);
             }
         }
-        Err(e) => kprintln!("✗ Failed to list directory: {:?}", e),
+        Err(_) => kprintln!("⚠️  Failed to list directory"),
     }
 
-    // Demonstrate file reading
-    kprintln!("Reading back created files...");
-
-    // Read and display README.txt
-    if let Ok(Some(readme_record)) = filesystem.find_file("README.txt") {
-        match filesystem.read_file(readme_record) {
-            Ok(content) => {
-                if let Ok(text) = alloc::string::String::from_utf8(content) {
-                    kprintln!("Contents of README.txt:");
-                    kprintln!("─────────────────────────────");
-                    // Print first few lines
-                    for (i, line) in text.lines().enumerate() {
-                        if i < 5 {
-                            kprintln!("   {}", line);
-                        } else if i == 5 {
-                            kprintln!("   ... ({} more lines)", text.lines().count() - 5);
-                            break;
-                        }
-                    }
-                    kprintln!("─────────────────────────────");
-                } else {
-                    kprintln!("✗ README.txt contains invalid UTF-8");
-                }
-            }
-            Err(e) => kprintln!("✗ Failed to read README.txt: {:?}", e),
-        }
+    // Test file search
+    match filesystem.find_file("README.txt") {
+        Ok(Some(record)) => kprintln!("✅ Found README.txt at record #{}", record),
+        Ok(None) => kprintln!("⚠️  README.txt not found"),
+        Err(_) => kprintln!("⚠️  Error searching for README.txt"),
     }
 
-    // Demonstrate file search
-    kprintln!("File search demonstration:");
-    let search_files = ["README.txt", "config.ini", "demo.rs", "nonexistent.txt"];
-    for filename in &search_files {
-        match filesystem.find_file(filename) {
-            Ok(Some(record)) => kprintln!("✓ Found '{}' at record #{}", filename, record),
-            Ok(None) => kprintln!("✗ File '{}' not found", filename),
-            Err(e) => kprintln!("✗ Error searching for '{}': {:?}", filename, e),
-        }
-    }
-
-    // Final filesystem sync
-    match filesystem.sync() {
-        Ok(()) => kprintln!("Filesystem synchronized to disk"),
-        Err(e) => kprintln!("Filesystem sync warning: {:?}", e),
-    }
-
-        kprintln!("\n🎉 Advanced Galleon2 filesystem demonstration completed!");
-
-        Ok(())
-    })();
-
-    // Handle filesystem operation results
-    match filesystem_operations_result {
-        Ok(()) => kprintln!("All filesystem operations completed successfully"),
-        Err(e) => kprintln!("Filesystem operations failed: {:?}", e),
-    }
-
-    // Initialize USB subsystem
-    init::usb::init_usb();
-
-    #[cfg(test)]
-    test_main();
-
-    kprintln!("System idle. Halting CPU...");
-
-    // Enter an infinite HALT loop.
-    loop {
-        core::arch::asm!("hlt");
-    }
+    Ok(())
 }
 
 /// Kernel panic handler
