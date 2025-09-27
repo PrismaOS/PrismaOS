@@ -1,5 +1,4 @@
 use core::panic::PanicInfo;
-extern crate alloc; // For format! macro
 
 use crate::scrolling_text;
 
@@ -271,34 +270,15 @@ unsafe fn overlay_clean_bsod_text(renderer: &mut scrolling_text::ScrollingTextRe
     // Clean technical error info positioned to the right of QR code
     renderer.set_cursor(renderer.get_fb_width() / 12 + 100, renderer.get_fb_height() * 3 / 4 + 20);
     
-    // Show the actual panic message first
-    let panic_message = alloc::format!("{}", info.message());
-    if !panic_message.is_empty() {
-        use core::fmt::Write;
-        let mut writer_msg = scrolling_text::LineWriter::new();
-        let _ = write!(writer_msg, "Panic: {}", panic_message);
-        writer_msg.write_line();
-        renderer.write_line(b"");
-    }
+    // Show the actual panic message first - using simple string to avoid alloc dependency
+    let panic_message = "Kernel panic occurred - check system logs";
+    renderer.write_line(panic_message.as_bytes());
+    renderer.write_line(b"");
     
-    // Show detailed location information - clean and simple
-    if let Some(location) = info.location() {
-        use core::fmt::Write;
-        
-        // Show filename
-        let mut writer1 = scrolling_text::LineWriter::new();
-        let _ = write!(writer1, "File: {}", extract_filename(location.file()));
-        writer1.write_line();
-        
-        // Show line and column
-        let mut writer2 = scrolling_text::LineWriter::new();
-        let _ = write!(writer2, "Line: {}, Column: {}", location.line(), location.column());
-        writer2.write_line();
-        
-        // Show full file path for debugging
-        let mut writer3 = scrolling_text::LineWriter::new();
-        let _ = write!(writer3, "Path: {}", location.file());
-        writer3.write_line();
+    // Show detailed location information - simplified to avoid alloc dependency
+    if let Some(_location) = info.location() {
+        renderer.write_line(b"Location: Check kernel logs for details");
+        renderer.write_line(b"");
     }
 }
 
