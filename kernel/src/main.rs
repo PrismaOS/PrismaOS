@@ -355,7 +355,7 @@ fn panic_handler(info: &PanicInfo) -> ! {
 
     // Try to render a framebuffer BSOD, otherwise use VGA fallback. The
     // global renderer is an Option in `scrolling_text` so we check it
-    // unsafely here (same behavior as before).
+    // Check the global renderer and render BSOD
     unsafe {
         if let Some(ref mut renderer) = scrolling_text::GLOBAL_RENDERER {
             crate::utils::bsod::render_framebuffer_bsod(renderer, info);

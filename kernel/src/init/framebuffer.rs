@@ -14,23 +14,22 @@ use alloc::format;
 static mut INIT_GLOBAL_FONT: Option<PsfFont> = None;
 
 /// Minimal framebuffer context returned when rendering is available.
-pub struct FbContext<'a> {
+pub struct FbContext {
     pub addr: *mut u8,
     pub pitch: usize,
     pub width: usize,
     pub height: usize,
-    pub renderer: ScrollingTextRenderer<'a>,
 }
 
-impl<'a> FbContext<'a> {
-    /// Helper to write a string using the renderer.
+impl FbContext {
+    /// Helper to write a string using the global renderer.
     pub fn write_line(&mut self, text: &str) {
-        self.renderer.write_text(text.as_bytes());
+        lib_kernel::scrolling_text::write_global(text.as_bytes());
     }
 }
 
 /// Probe Limine framebuffer and initialize a renderer if possible.
-pub fn init_framebuffer_and_renderer() -> Result<Option<FbContext<'static>>, &'static str> {
+pub fn init_framebuffer_and_renderer() -> Result<Option<FbContext>, &'static str> {
     if let Some(framebuffer_response) = lib_kernel::consts::FRAMEBUFFER_REQUEST.get_response() {
         if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
             let addr = framebuffer.addr();
@@ -50,34 +49,30 @@ pub fn init_framebuffer_and_renderer() -> Result<Option<FbContext<'static>>, &'s
                 unsafe {
                     INIT_GLOBAL_FONT = Some(font);
                     let font_ref = INIT_GLOBAL_FONT.as_ref().unwrap();
-                    init_global_renderer(addr, pitch, width, height, font_ref, 16, 8, 8);
-                }
-                
-                unsafe {
+
+                    // Create renderer ONCE and initialize global
                     let renderer = ScrollingTextRenderer::new(
                         addr,
                         pitch,
                         width,
                         height,
-                        INIT_GLOBAL_FONT.as_ref().unwrap(),
+                        font_ref,
                         16,
                         8,
                         8,
                     );
-                    
-                    let mut context = FbContext { 
-                        addr: addr as *mut u8, 
-                        pitch, 
-                        width, 
-                        height, 
-                        renderer 
-                    };
-                    
-                    context.renderer.write_text("PrismaOS - Production Kernel Starting...\n".as_bytes());
-                    // TODO: We need to make sure the allocator is initialized before using format!
-                    // context.renderer.write_text(format!("Framebuffer: {}x{} @ {:#x} (pitch: {})\n", width, height, addr as usize, pitch).as_bytes());
-                    
-                    return Ok(Some(context));
+                    init_global_renderer(renderer);
+
+                    // Write initial message using the global renderer
+                    lib_kernel::scrolling_text::write_global(b"PrismaOS - Production Kernel Starting...\n");
+
+                    // Return a simple context without duplicating the renderer
+                    return Ok(Some(FbContext {
+                        addr: addr as *mut u8,
+                        pitch,
+                        width,
+                        height,
+                    }));
                 }
             } else {
                 for y in 0..height {

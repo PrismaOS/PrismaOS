@@ -26,11 +26,14 @@ pub use userspace::launch_userspace_components;
 /// `Err(&'static str)` on a fatal error that the caller should handle by
 /// halting the machine.
 pub fn init_kernel() -> Result<(), &'static str> {
+    // CRITICAL: Initialize memory and heap allocator FIRST, before any heap allocations
+    // The framebuffer renderer uses VecDeque which requires the allocator to be ready
+    init_memory_and_heap()?;
+
     match init_framebuffer_and_renderer() {
         Ok(Some(mut fbctx)) => {
             fbctx.write_line("Initializing kernel subsystems...");
 
-            init_memory_and_heap()?;
             init_core_subsystems();
             init_higher_level_subsystems();
             launch_userspace_components();
@@ -45,10 +48,6 @@ pub fn init_kernel() -> Result<(), &'static str> {
         Ok(None) => {
             kprintln!("Initializing kernel subsystems...");
             init_core_subsystems();
-
-            unreachable!("CPU should have halted after framebuffer initialization failure");
-
-            init_memory_and_heap()?;
             init_higher_level_subsystems();
             launch_userspace_components();
 
