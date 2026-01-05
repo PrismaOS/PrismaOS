@@ -11,6 +11,25 @@
 //! The MFT starts small (~0.78% of disk) and can grow dynamically as files are created.
 
 use alloc::{vec, vec::Vec, string::String};
+use core::mem::MaybeUninit;
+
+/// 4096-aligned buffer for disk I/O
+#[repr(align(4096))]
+pub struct AlignedBuf {
+    pub buf: [u8; 4096],
+}
+
+impl AlignedBuf {
+    pub fn new() -> Self {
+        Self { buf: [0u8; 4096] }
+    }
+    pub fn as_mut_slice(&mut self, len: usize) -> &mut [u8] {
+        &mut self.buf[..len]
+    }
+    pub fn as_slice(&self, len: usize) -> &[u8] {
+        &self.buf[..len]
+    }
+}
 use crate::{FilesystemResult, FilesystemError, ide_read_sectors, ide_write_sectors};
 
 pub const MFT_RECORD_SIZE: usize = 1024; // 1KB per record
@@ -487,12 +506,12 @@ impl MftManager {
 
         let sectors_per_cluster = (self.cluster_size / 512).max(1) as u64; // Ensure at least 1 sector per cluster
         let cluster_sector = (self.mft_start_cluster + cluster_offset) * sectors_per_cluster;
-        let mut cluster_data = vec![0u8; self.cluster_size as usize];
+        let mut cluster_data = AlignedBuf::new();
 
         // Read the cluster containing the record
-        ide_read_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &mut cluster_data)?;
+        ide_read_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &mut cluster_data.buf[..self.cluster_size as usize])?;
 
-        let record_data = &cluster_data[record_offset as usize..(record_offset as usize + MFT_RECORD_SIZE)];
+        let record_data = &cluster_data.buf[record_offset as usize..(record_offset as usize + MFT_RECORD_SIZE)];
         MftRecord::deserialize(record_data, record_number)
     }
 
@@ -506,18 +525,18 @@ impl MftManager {
 
         let sectors_per_cluster = (self.cluster_size / 512).max(1) as u64; // Ensure at least 1 sector per cluster
         let cluster_sector = (self.mft_start_cluster + cluster_offset) * sectors_per_cluster;
-        let mut cluster_data = vec![0u8; self.cluster_size as usize];
+        let mut cluster_data = AlignedBuf::new();
 
         // Read existing cluster data
-        ide_read_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &mut cluster_data)?;
+        ide_read_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &mut cluster_data.buf[..self.cluster_size as usize])?;
 
         // Update the specific record
         let record_data = record.serialize();
-        cluster_data[record_offset as usize..(record_offset as usize + MFT_RECORD_SIZE)]
+        cluster_data.buf[record_offset as usize..(record_offset as usize + MFT_RECORD_SIZE)]
             .copy_from_slice(&record_data[..MFT_RECORD_SIZE]);
 
         // Write back the cluster
-        ide_write_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &cluster_data)?;
+        ide_write_sectors(self.drive, sectors_per_cluster as u8, cluster_sector as u32, &cluster_data.buf[..self.cluster_size as usize])?;
         Ok(())
     }
 
