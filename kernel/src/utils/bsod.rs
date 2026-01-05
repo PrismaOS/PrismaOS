@@ -141,28 +141,33 @@ pub unsafe fn render_vga_bsod(info: &PanicInfo) {
 
 /// Render BSOD using framebuffer renderer (Modern Windows-style graphics)
 pub unsafe fn render_framebuffer_bsod(renderer: &mut scrolling_text::ScrollingTextRenderer, info: &PanicInfo) {
-    let windows_blue = 0xFF0037DA; // Windows 10/11 BSOD blue
-    let white = 0xFFFFFFFF;
-    let light_blue = 0xFF4A90E2;
-    let pitch = renderer.get_pitch();
-    let width = renderer.get_fb_width();
-    let height = renderer.get_fb_height();
-    let fb_addr = renderer.get_fb_addr();
-    
-    // Create clean solid background first
-    draw_solid_background(fb_addr, pitch, width, height, windows_blue);
-    
-    // Draw clean sad face at top
-    draw_clean_sad_face(fb_addr, pitch, width, height, white);
-    
-    // Draw clean progress bar
-    draw_clean_progress_bar(fb_addr, pitch, width, height, white, light_blue);
-    
-    // Draw clean QR code
-    draw_clean_qr_code(fb_addr, pitch, width, height, white);
-    
-    // Now overlay all the text with proper spacing
-    overlay_clean_bsod_text(renderer, info, white);
+    // Simplified BSOD - just print the panic info as text
+    use core::fmt::Write;
+
+    renderer.write_line(b"");
+    renderer.write_line(b"=================================");
+    renderer.write_line(b"    KERNEL PANIC");
+    renderer.write_line(b"=================================");
+    renderer.write_line(b"");
+
+    // Print panic message
+    let mut writer = lib_kernel::scrolling_text::LineWriter::new();
+    let _ = write!(writer, "Message: {}", info.message());
+    renderer.write_text(&writer.finish());
+    renderer.write_char(b'\n');
+    renderer.write_line(b"");
+
+    // Print location
+    if let Some(location) = info.location() {
+        let mut writer = lib_kernel::scrolling_text::LineWriter::new();
+        let _ = write!(writer, "Location: {}:{}:{}", location.file(), location.line(), location.column());
+        renderer.write_text(&writer.finish());
+        renderer.write_char(b'\n');
+    }
+
+    renderer.write_line(b"");
+    renderer.write_line(b"System halted.");
+    renderer.write_line(b"=================================");
 }
 
 /// Create a clean solid background
