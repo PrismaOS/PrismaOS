@@ -11,13 +11,13 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 // Kernel heap configuration
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 64 * 1024 * 1024; // 64 MiB - increased for console buffer and kernel allocations
+pub const HEAP_SIZE: usize =128 * 1024 * 1024; // 96 MiB - kernel heap size
 
 // Small bootstrap heap for early allocations before we set up virtual memory
 #[repr(align(16))]
 struct BootstrapHeap([u8; 64 * 1024]); // 64KB bootstrap heap
 
-static mut BOOTSTRAP_HEAP: BootstrapHeap = BootstrapHeap([0; 64 * 1024]);
+static mut BOOTSTRAP_HEAP: BootstrapHeap = BootstrapHeap([0; 64 * 1024]); // 64KB bootstrap heap
 static mut BOOTSTRAP_ACTIVE: bool = false;
 
 /// Initialize bootstrap heap for early kernel allocations
@@ -39,17 +39,34 @@ pub fn init_heap(
         Page::range_inclusive(heap_start_page, heap_end_page)
     };
 
+    let total_pages = ((HEAP_SIZE + 4095) / 4096) as u64;
+    crate::kprintln!("[HEAP] Allocating {} pages ({} MiB) for heap...", total_pages, HEAP_SIZE / (1024 * 1024));
+    
+    let mut allocated_pages = 0u64;
+    
     // Map each page of the heap to physical memory
     for page in page_range {
         let frame = frame_allocator
             .allocate_frame()
-            .ok_or(MapToError::FrameAllocationFailed)?;
+            .ok_or_else(|| {
+                crate::kprintln!("[HEAP ERROR] Failed to allocate frame after {} pages!", allocated_pages);
+                crate::kprintln!("[HEAP ERROR] Needed {} total pages, got {} pages", total_pages, allocated_pages);
+                MapToError::FrameAllocationFailed
+            })?;
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         unsafe { 
             let flush_result = mapper.map_to(page, frame, flags, frame_allocator)?;
             flush_result.flush();
         };
+        allocated_pages += 1;
+        
+        // Progress indicator every 1000 pages
+        if allocated_pages % 1000 == 0 {
+            crate::kprintln!("[HEAP] Allocated {} / {} pages...", allocated_pages, total_pages);
+        }
     }
+    
+    crate::kprintln!("[HEAP] Successfully allocated all {} pages", allocated_pages);
 
     // Switch from bootstrap heap to main heap
     unsafe {

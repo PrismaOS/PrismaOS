@@ -2,6 +2,13 @@
 //!
 //! Core metadata storage system using Master File Table architecture.
 //! Every file and directory is represented as a record in the MFT.
+//!
+//! ## Memory Efficiency
+//! This implementation uses a lazy-loading approach where MFT records are only
+//! read from disk when needed, rather than loading the entire MFT into memory.
+//! This is critical for systems with limited RAM (e.g., 96MB kernel limit).
+//!
+//! The MFT starts small (~0.78% of disk) and can grow dynamically as files are created.
 
 use alloc::{vec, vec::Vec, string::String};
 use crate::{FilesystemResult, FilesystemError, ide_read_sectors, ide_write_sectors};

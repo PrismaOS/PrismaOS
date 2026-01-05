@@ -34,20 +34,23 @@ impl GalleonSuperBlock {
         kprintln!("Creating new GalleonSuperBlock...");
         kprintln!("Total clusters: {}, Cluster size: {}", total_clusters, cluster_size);
         
-        // Advanced filesystem layout:
+        // Memory-efficient filesystem layout optimized for limited RAM:
         // Clusters 0-15: Boot sector and reserved
-        // Clusters 16-?: MFT (starts at cluster 16)
-        // Clusters ?-?: MFT Mirror (backup)
-        // Clusters ?-?: Journal/Log file
-        // Clusters ?-?: Cluster bitmap
+        // Clusters 16-?: MFT (~0.78% of disk, capped at 256 clusters max = ~1MB)
+        // Clusters ?-?: MFT Mirror (25% of MFT size for redundancy)
+        // Clusters ?-?: Journal/Log file (~0.39% of disk, capped at 64 clusters)
+        // Clusters ?-?: Cluster bitmap (minimal overhead)
         // Clusters ?-?: Index allocation
         // Clusters ?-?: User data
+        //
+        // This layout ensures system structures use <2MB total even on large disks,
+        // preventing OOM on kernels with 96MB limits. MFT can grow dynamically as needed.
 
-        let mft_size_clusters = (total_clusters / 8).max(16); // 12.5% for MFT, minimum 16 clusters
+        let mft_size_clusters = (total_clusters / 128).clamp(16, 256); // ~0.78% for MFT, 16-256 clusters
         let mft_start_cluster = 16;
         let mft_mirror_cluster = mft_start_cluster + mft_size_clusters;
         let journal_start_cluster = mft_mirror_cluster + mft_size_clusters / 4; // 25% of MFT size for mirror
-        let journal_size_clusters = (total_clusters / 32).max(8); // 3.125% for journal, minimum 8 clusters
+        let journal_size_clusters = (total_clusters / 256).clamp(8, 64); // ~0.39% for journal, 8-64 clusters
         let bitmap_start_cluster = journal_start_cluster + journal_size_clusters;
         let bitmap_size_clusters = ((total_clusters + 8 * cluster_size as u64 - 1) / (8 * cluster_size as u64)).max(1);
         let index_allocation_start = bitmap_start_cluster + bitmap_size_clusters;

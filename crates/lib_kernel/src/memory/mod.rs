@@ -62,6 +62,9 @@ impl BootInfoFrameAllocator {
             next_frame: PhysAddr::new(0),
         };
         
+        crate::kprintln!("[MEMORY] Parsing memory map with {} entries...", memory_map.len());
+        let mut total_memory = 0u64;
+        
         // Store only usable memory regions without using Vec (no heap required)
         for &entry in memory_map.iter() {
             // Check if this is a usable memory region  
@@ -80,12 +83,22 @@ impl BootInfoFrameAllocator {
                     let end_addr = PhysAddr::new((entry.base + entry.length) & !4095);
                     
                     if start_addr < end_addr {
+                        let region_size = end_addr.as_u64() - start_addr.as_u64();
+                        total_memory += region_size;
+                        crate::kprintln!("[MEMORY] Region {}: {:#x} - {:#x} ({} MiB)", 
+                            allocator.region_count, start_addr.as_u64(), end_addr.as_u64(), 
+                            region_size / (1024 * 1024));
                         allocator.memory_regions[allocator.region_count] = Some((start_addr, end_addr));
                         allocator.region_count += 1;
                     }
                 }
             }
         }
+        
+        crate::kprintln!("[MEMORY] Total usable memory: {} MiB ({} regions)", 
+            total_memory / (1024 * 1024), allocator.region_count);
+        crate::kprintln!("[MEMORY] Available pages: {} (need 24,576 for 96MB heap)", 
+            total_memory / 4096);
         
         // Start with the first region
         if allocator.region_count > 0 {
