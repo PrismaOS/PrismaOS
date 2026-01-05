@@ -30,6 +30,24 @@ impl AlignedBuf {
         &self.buf[..len]
     }
 }
+
+/// 1024-aligned buffer for MFT record I/O
+#[repr(align(1024))]
+pub struct AlignedRecordBuf {
+    pub buf: [u8; MFT_RECORD_SIZE],
+}
+
+impl AlignedRecordBuf {
+    pub fn new() -> Self {
+        Self { buf: [0u8; MFT_RECORD_SIZE] }
+    }
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.buf
+    }
+    pub fn as_slice(&self) -> &[u8] {
+        &self.buf
+    }
+}
 use crate::{FilesystemResult, FilesystemError, ide_read_sectors, ide_write_sectors};
 
 pub const MFT_RECORD_SIZE: usize = 1024; // 1KB per record
@@ -168,33 +186,33 @@ impl MftRecord {
     }
 
     pub fn serialize(&self) -> Vec<u8> {
-        let mut data = vec![0u8; MFT_RECORD_SIZE];
+        let mut data = AlignedRecordBuf::new();
         let mut offset = 0;
 
         // Serialize header
-        data[offset..offset+4].copy_from_slice(&self.header.signature);
+        data.buf[offset..offset+4].copy_from_slice(&self.header.signature);
         offset += 4;
-        data[offset..offset+2].copy_from_slice(&self.header.update_sequence_offset.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.update_sequence_offset.to_le_bytes());
         offset += 2;
-        data[offset..offset+2].copy_from_slice(&self.header.update_sequence_size.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.update_sequence_size.to_le_bytes());
         offset += 2;
-        data[offset..offset+8].copy_from_slice(&self.header.log_file_sequence_number.to_le_bytes());
+        data.buf[offset..offset+8].copy_from_slice(&self.header.log_file_sequence_number.to_le_bytes());
         offset += 8;
-        data[offset..offset+2].copy_from_slice(&self.header.sequence_number.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.sequence_number.to_le_bytes());
         offset += 2;
-        data[offset..offset+2].copy_from_slice(&self.header.hard_link_count.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.hard_link_count.to_le_bytes());
         offset += 2;
-        data[offset..offset+2].copy_from_slice(&self.header.first_attribute_offset.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.first_attribute_offset.to_le_bytes());
         offset += 2;
-        data[offset..offset+2].copy_from_slice(&self.header.flags.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.flags.to_le_bytes());
         offset += 2;
-        data[offset..offset+4].copy_from_slice(&self.header.bytes_in_use.to_le_bytes());
+        data.buf[offset..offset+4].copy_from_slice(&self.header.bytes_in_use.to_le_bytes());
         offset += 4;
-        data[offset..offset+4].copy_from_slice(&self.header.bytes_allocated.to_le_bytes());
+        data.buf[offset..offset+4].copy_from_slice(&self.header.bytes_allocated.to_le_bytes());
         offset += 4;
-        data[offset..offset+8].copy_from_slice(&self.header.base_file_record.to_le_bytes());
+        data.buf[offset..offset+8].copy_from_slice(&self.header.base_file_record.to_le_bytes());
         offset += 8;
-        data[offset..offset+2].copy_from_slice(&self.header.next_attribute_id.to_le_bytes());
+        data.buf[offset..offset+2].copy_from_slice(&self.header.next_attribute_id.to_le_bytes());
         offset += 2;
 
         // Skip to first attribute offset
@@ -203,14 +221,14 @@ impl MftRecord {
         // Serialize attributes
         for attr in &self.attributes {
             let attr_data = attr.serialize();
-            data[offset..offset+attr_data.len()].copy_from_slice(&attr_data);
+            data.buf[offset..offset+attr_data.len()].copy_from_slice(&attr_data);
             offset += attr_data.len();
         }
 
         // End marker
-        data[offset..offset+4].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
+        data.buf[offset..offset+4].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
 
-        data
+        data.buf.to_vec()
     }
 
     pub fn deserialize(data: &[u8], record_number: FileRecordNumber) -> FilesystemResult<Self> {
