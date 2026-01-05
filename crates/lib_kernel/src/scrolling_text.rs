@@ -435,8 +435,9 @@ impl<'a> ScrollingTextRenderer<'a> {
     }
 
     pub fn set_cursor(&mut self, col: usize, line: usize) {
-        self.cursor_col = col;
-        self.cursor_line = line;
+        // Clamp to valid ranges to prevent out-of-bounds access
+        self.cursor_col = col.min(self.cols.saturating_sub(1));
+        self.cursor_line = line.min(self.line_count.saturating_sub(1));
     }
 
     pub fn write_line(&mut self, text: &[u8]) {
