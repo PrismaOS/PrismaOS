@@ -123,12 +123,11 @@ unsafe extern "C" fn kmain() -> ! {
         }
     }
 
-    kprintln!("System idle. Halting CPU...");
-
-    // Enter an infinite HALT loop.
-    loop {
-        core::arch::asm!("hlt");
-    }
+    // kprintln!("System idle. Halting CPU...");
+    // // Enter an infinite HALT loop.
+    // loop {
+    //     core::arch::asm!("hlt");
+    // }
 
     kprintln!("Proceeding with Galleon2 filesystem initialization...");
 
