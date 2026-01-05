@@ -61,17 +61,17 @@ pub fn init_pci() -> PciAccess {
                             "Legacy/Non-PCI"
                         };
 
-                        kprintln!("  Bus {:02x}, Device {:02x}, Function {:x}:", bus, device_num, function);
-                        kprintln!("    Vendor: {} ({:#06x}), Device: {} ({:#06x})", vendor_name, vendor_id, device_name, device_id);
-                        kprintln!("    Type: {}", pci_type);
-                        kprintln!("    Class Code: {:#04x}", class_code);
+                        // kprintln!("  Bus {:02x}, Device {:02x}, Function {:x}:", bus, device_num, function);
+                        // kprintln!("    Vendor: {} ({:#06x}), Device: {} ({:#06x})", vendor_name, vendor_id, device_name, device_id);
+                        // kprintln!("    Type: {}", pci_type);
+                        // kprintln!("    Class Code: {:#04x}", class_code);
 
-                        if let Some(caps) = pci_fn.capabilities() {
-                            let cap_count = caps.count();
-                            kprintln!("    Number of capabilities: {}", cap_count);
-                        } else {
-                            kprintln!("    Could not fetch capabilities");
-                        }
+                        // if let Some(caps) = pci_fn.capabilities() {
+                        //     let cap_count = caps.count();
+                        //     kprintln!("    Number of capabilities: {}", cap_count);
+                        // } else {
+                        //     kprintln!("    Could not fetch capabilities");
+                        // }
                     }
                 }
             }

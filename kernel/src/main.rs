@@ -23,7 +23,7 @@
 
 use alloc::string::ToString;
 use core::panic::PanicInfo;
-use lib_kernel::{consts::BASE_REVISION, kprintln, scrolling_text};
+use lib_kernel::{ consts::BASE_REVISION, kprintln, scrolling_text };
 
 extern crate alloc;
 
@@ -40,7 +40,7 @@ mod init;
 mod utils;
 
 use ahci;
-use galleon2::{GalleonFilesystem, FilesystemStats};
+use galleon2::{ GalleonFilesystem, FilesystemStats };
 use luminal;
 use pci::init_pci;
 use usb;
@@ -68,7 +68,7 @@ unsafe extern "C" fn kmain() -> ! {
     // remains compact and easy to audit. We keep behavior identical to the
     // previous implementation: if initialization fails, halt the system.
     match init::init_kernel() {
-        Ok(()) => { /* Initialization completed successfully. */ }
+        Ok(()) => {/* Initialization completed successfully. */}
         Err(e) => {
             kprintln!("ERROR: Kernel initialization failed: {}", e);
             crate::utils::system::halt_system();
@@ -121,6 +121,13 @@ unsafe extern "C" fn kmain() -> ! {
         loop {
             core::arch::asm!("hlt");
         }
+    }
+
+    kprintln!("System idle. Halting CPU...");
+
+    // Enter an infinite HALT loop.
+    loop {
+        core::arch::asm!("hlt");
     }
 
     kprintln!("Proceeding with Galleon2 filesystem initialization...");
@@ -183,126 +190,131 @@ unsafe extern "C" fn kmain() -> ! {
         // Create sample directory structure
         kprintln!("Creating sample file structure...");
 
-    // Create directories
-    let home_dir = match filesystem.create_directory(5, "home".to_string()) {
-        Ok(dir) => {
-            kprintln!("✓ Created directory: /home");
-            dir
-        }
-        Err(e) => {
-            kprintln!("✗ Failed to create /home: {:?}", e);
-            5 // fallback to root
-        }
-    };
-
-    let docs_dir = match filesystem.create_directory(home_dir, "documents".to_string()) {
-        Ok(dir) => {
-            kprintln!("✓ Created directory: /home/documents");
-            dir
-        }
-        Err(e) => {
-            kprintln!("✗ Failed to create /home/documents: {:?}", e);
-            home_dir
-        }
-    };
-
-    let projects_dir = match filesystem.create_directory(home_dir, "projects".to_string()) {
-        Ok(dir) => {
-            kprintln!("✓ Created directory: /home/projects");
-            dir
-        }
-        Err(e) => {
-            kprintln!("✗ Failed to create /home/projects: {:?}", e);
-            home_dir
-        }
-    };
-
-    // Create sample files
-    kprintln!("Creating sample files...");
-
-    // Create a simple text file
-    let readme_content = b"Welcome to PrismaOS!\n\nThis is a demonstration of the advanced Galleon2 filesystem.\nFeatures:\n- NTFS-like architecture\n- Transaction journaling\n- B+ tree indexing\n- Extent-based allocation\n- Crash recovery\n\nBuilt with Rust for maximum safety and performance.".to_vec();
-    match filesystem.create_file(5, "README.txt".to_string(), Some(readme_content)) {
-        Ok(_) => kprintln!("✓ Created file: /README.txt"),
-        Err(e) => kprintln!("✗ Failed to create README.txt: {:?}", e),
-    }
-
-    // Create a config file in documents
-    let config_content = b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
-    match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
-        Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
-        Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
-    }
-
-    // Create a source code file in projects
-    let source_content = b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
-    match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
-        Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
-        Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
-    }
-
-    // Create a large file to demonstrate extent allocation
-    let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
-    match filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content)) {
-        Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
-        Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
-    }
-
-    // List root directory contents
-    kprintln!("Root directory listing:");
-    match filesystem.list_directory() {
-        Ok(entries) => {
-            for (name, record_num) in entries {
-                kprintln!("   {} (record #{})", name, record_num);
+        // Create directories
+        let home_dir = match filesystem.create_directory(5, "home".to_string()) {
+            Ok(dir) => {
+                kprintln!("✓ Created directory: /home");
+                dir
             }
+            Err(e) => {
+                kprintln!("✗ Failed to create /home: {:?}", e);
+                5 // fallback to root
+            }
+        };
+
+        let docs_dir = match filesystem.create_directory(home_dir, "documents".to_string()) {
+            Ok(dir) => {
+                kprintln!("✓ Created directory: /home/documents");
+                dir
+            }
+            Err(e) => {
+                kprintln!("✗ Failed to create /home/documents: {:?}", e);
+                home_dir
+            }
+        };
+
+        let projects_dir = match filesystem.create_directory(home_dir, "projects".to_string()) {
+            Ok(dir) => {
+                kprintln!("✓ Created directory: /home/projects");
+                dir
+            }
+            Err(e) => {
+                kprintln!("✗ Failed to create /home/projects: {:?}", e);
+                home_dir
+            }
+        };
+
+        // Create sample files
+        kprintln!("Creating sample files...");
+
+        // Create a simple text file
+        let readme_content =
+            b"Welcome to PrismaOS!\n\nThis is a demonstration of the advanced Galleon2 filesystem.\nFeatures:\n- NTFS-like architecture\n- Transaction journaling\n- B+ tree indexing\n- Extent-based allocation\n- Crash recovery\n\nBuilt with Rust for maximum safety and performance.".to_vec();
+        match filesystem.create_file(5, "README.txt".to_string(), Some(readme_content)) {
+            Ok(_) => kprintln!("✓ Created file: /README.txt"),
+            Err(e) => kprintln!("✗ Failed to create README.txt: {:?}", e),
         }
-        Err(e) => kprintln!("✗ Failed to list directory: {:?}", e),
-    }
 
-    // Demonstrate file reading
-    kprintln!("Reading back created files...");
+        // Create a config file in documents
+        let config_content =
+            b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
+        match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
+            Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
+            Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
+        }
 
-    // Read and display README.txt
-    if let Ok(Some(readme_record)) = filesystem.find_file("README.txt") {
-        match filesystem.read_file(readme_record) {
-            Ok(content) => {
-                if let Ok(text) = alloc::string::String::from_utf8(content) {
-                    kprintln!("Contents of README.txt:");
-                    kprintln!("─────────────────────────────");
-                    // Print first few lines
-                    for (i, line) in text.lines().enumerate() {
-                        if i < 5 {
-                            kprintln!("   {}", line);
-                        } else if i == 5 {
-                            kprintln!("   ... ({} more lines)", text.lines().count() - 5);
-                            break;
-                        }
-                    }
-                    kprintln!("─────────────────────────────");
-                } else {
-                    kprintln!("✗ README.txt contains invalid UTF-8");
+        // Create a source code file in projects
+        let source_content =
+            b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
+        match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
+            Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
+            Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
+        }
+
+        // Create a large file to demonstrate extent allocation
+        let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
+        match
+            filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content))
+        {
+            Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
+            Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
+        }
+
+        // List root directory contents
+        kprintln!("Root directory listing:");
+        match filesystem.list_directory() {
+            Ok(entries) => {
+                for (name, record_num) in entries {
+                    kprintln!("   {} (record #{})", name, record_num);
                 }
             }
-            Err(e) => kprintln!("✗ Failed to read README.txt: {:?}", e),
+            Err(e) => kprintln!("✗ Failed to list directory: {:?}", e),
         }
-    }
 
-    // Demonstrate file search
-    kprintln!("File search demonstration:");
-    let search_files = ["README.txt", "config.ini", "demo.rs", "nonexistent.txt"];
-    for filename in &search_files {
-        match filesystem.find_file(filename) {
-            Ok(Some(record)) => kprintln!("✓ Found '{}' at record #{}", filename, record),
-            Ok(None) => kprintln!("✗ File '{}' not found", filename),
-            Err(e) => kprintln!("✗ Error searching for '{}': {:?}", filename, e),
+        // Demonstrate file reading
+        kprintln!("Reading back created files...");
+
+        // Read and display README.txt
+        if let Ok(Some(readme_record)) = filesystem.find_file("README.txt") {
+            match filesystem.read_file(readme_record) {
+                Ok(content) => {
+                    if let Ok(text) = alloc::string::String::from_utf8(content) {
+                        kprintln!("Contents of README.txt:");
+                        kprintln!("─────────────────────────────");
+                        // Print first few lines
+                        for (i, line) in text.lines().enumerate() {
+                            if i < 5 {
+                                kprintln!("   {}", line);
+                            } else if i == 5 {
+                                kprintln!("   ... ({} more lines)", text.lines().count() - 5);
+                                break;
+                            }
+                        }
+                        kprintln!("─────────────────────────────");
+                    } else {
+                        kprintln!("✗ README.txt contains invalid UTF-8");
+                    }
+                }
+                Err(e) => kprintln!("✗ Failed to read README.txt: {:?}", e),
+            }
         }
-    }
 
-    // Final filesystem sync
-    match filesystem.sync() {
-        Ok(()) => kprintln!("Filesystem synchronized to disk"),
-        Err(e) => kprintln!("Filesystem sync warning: {:?}", e),
-    }
+        // Demonstrate file search
+        kprintln!("File search demonstration:");
+        let search_files = ["README.txt", "config.ini", "demo.rs", "nonexistent.txt"];
+        for filename in &search_files {
+            match filesystem.find_file(filename) {
+                Ok(Some(record)) => kprintln!("✓ Found '{}' at record #{}", filename, record),
+                Ok(None) => kprintln!("✗ File '{}' not found", filename),
+                Err(e) => kprintln!("✗ Error searching for '{}': {:?}", filename, e),
+            }
+        }
+
+        // Final filesystem sync
+        match filesystem.sync() {
+            Ok(()) => kprintln!("Filesystem synchronized to disk"),
+            Err(e) => kprintln!("Filesystem sync warning: {:?}", e),
+        }
 
         kprintln!("\n🎉 Advanced Galleon2 filesystem demonstration completed!");
 

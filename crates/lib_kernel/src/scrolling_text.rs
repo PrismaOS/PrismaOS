@@ -14,6 +14,7 @@ use crate::font::{draw_string, PsfFont};
 /// - Uses draw_string from font.rs to render lines.
 /// - Abstracts line/char spacing and basic scrolling behavior.
 /// - Designed for kernels / no_std environments.
+/// - Uses ring buffer approach for efficient scrolling without copying entire framebuffer
 ///
 /// Notes:
 /// - Colors are 0xAARRGGBB packed into u32 and written directly to framebuffer pixels.
@@ -39,6 +40,14 @@ pub struct ScrollingTextRenderer<'a> {
 
     cursor_x: usize,
     cursor_y: usize,
+
+    // Ring buffer for efficient scrolling
+    // Current logical line we're writing to (0 to total_lines-1)
+    current_logical_line: usize,
+    // Index of the first physical line that maps to logical line 0
+    first_line_index: usize,
+    // Total number of lines that fit in the framebuffer
+    total_lines: usize,
 }
 
 impl<'a> ScrollingTextRenderer<'a> {
@@ -61,6 +70,14 @@ impl<'a> ScrollingTextRenderer<'a> {
     ) -> Self {
         let cursor_x = left_margin;
         let cursor_y = top_margin;
+        let actual_line_height = if line_height == 0 { 8 } else { line_height };
+        let default_line_spacing = 2;
+
+        // Calculate total lines that fit in the framebuffer
+        // Each line occupies line_height + line_spacing pixels
+        let available_height = if fb_height > top_margin { fb_height - top_margin } else { 0 };
+        let line_total_height = actual_line_height + default_line_spacing;
+        let total_lines = if line_total_height > 0 { available_height / line_total_height } else { 0 };
 
         Self {
             fb_addr,
@@ -72,11 +89,14 @@ impl<'a> ScrollingTextRenderer<'a> {
             bg_color: 0x00000000, // default transparent/black
             line_spacing: 2,
             char_spacing: 1,
-            line_height: if line_height == 0 { 8 } else { line_height },
+            line_height: actual_line_height,
             left_margin,
             top_margin,
             cursor_x,
             cursor_y,
+            current_logical_line: 0,
+            first_line_index: 0,
+            total_lines,
         }
     }
 
@@ -93,7 +113,7 @@ impl<'a> ScrollingTextRenderer<'a> {
     }
 
     /// Clear the whole framebuffer region with the background color.
-    pub fn clear(&self) {
+    pub fn clear(&mut self) {
         if self.fb_addr.is_null() || self.pitch == 0 {
             return;
         }
@@ -110,70 +130,122 @@ impl<'a> ScrollingTextRenderer<'a> {
                 unsafe { pixel_ptr.write_volatile(self.bg_color) };
             }
         }
+
+        // Reset ring buffer state
+        self.current_logical_line = 0;
+        self.first_line_index = 0;
     }
 
-    /// Internal: scroll framebuffer up by `pixels` vertical pixels.
-    fn scroll_up(&mut self, pixels: usize) {
-        if self.fb_addr.is_null() || self.pitch == 0 || pixels == 0 {
+    /// Convert a logical line index to physical Y coordinate
+    /// This handles the ring buffer wraparound
+    fn logical_line_to_y(&self, logical_line: usize) -> usize {
+        if self.total_lines == 0 {
+            return self.top_margin;
+        }
+        let physical_line = (self.first_line_index + logical_line) % self.total_lines;
+        let line_stride = self.line_height + self.line_spacing;
+        self.top_margin + (physical_line * line_stride)
+    }
+
+    /// Get the current logical line number based on cursor_y
+    fn y_to_logical_line(&self, y: usize) -> usize {
+        if y < self.top_margin {
+            return 0;
+        }
+        let line_stride = self.line_height + self.line_spacing;
+        (y - self.top_margin) / line_stride
+    }
+
+    /// Clear a specific line in the framebuffer (by physical line index)
+    /// Clears the full line height including spacing to remove all old content
+    fn clear_physical_line(&self, physical_line: usize) {
+        if self.fb_addr.is_null() || self.pitch == 0 || self.total_lines == 0 {
             return;
         }
 
+        let line_stride = self.line_height + self.line_spacing;
+        let y_start = self.top_margin + (physical_line * line_stride);
+        // Clear the full line including spacing between lines
+        let y_end = y_start + line_stride;
+
+        let bytes_per_pixel = 4usize;
         let stride = self.pitch;
-        let _pixel_bytes = stride;
-        let h = self.fb_height;
 
-        if pixels >= h {
-            // Clear entire area
-            self.clear();
-            self.cursor_y = self.top_margin;
-            return;
-        }
-
-        let copy_rows = h - pixels;
-        let src_offset = pixels * stride;
-        let src = unsafe { self.fb_addr.add(src_offset) };
-        let dst = self.fb_addr;
-        let copy_bytes = copy_rows * stride;
-
-        // Move visible area up
-        unsafe {
-            ptr::copy(src, dst, copy_bytes);
-        }
-
-        // Clear the freed bottom area
-        let start_clear_row = copy_rows;
-        for y in start_clear_row..h {
+        for y in y_start..y_end {
+            if y >= self.fb_height {
+                break;
+            }
             let row_base = unsafe { self.fb_addr.add(y * stride) };
             for x in 0..self.fb_width {
-                let pixel_ptr = unsafe { row_base.add(x * 4).cast::<u32>() };
+                let pixel_ptr = unsafe { row_base.add(x * bytes_per_pixel).cast::<u32>() };
                 unsafe { pixel_ptr.write_volatile(self.bg_color) };
             }
         }
+    }
 
-        // Adjust cursor
-        if self.cursor_y >= pixels {
-            self.cursor_y -= pixels;
-        } else {
-            self.cursor_y = self.top_margin;
+    /// Internal: scroll framebuffer up by `pixels` vertical pixels.
+    /// Uses ring buffer approach: instead of copying all framebuffer data,
+    /// we just clear the top line and reuse it as the bottom line.
+    fn scroll_up(&mut self, pixels: usize) {
+        if self.fb_addr.is_null() || self.pitch == 0 || pixels == 0 || self.total_lines == 0 {
+            return;
         }
+
+        // Calculate how many lines to scroll
+        let lines_to_scroll = (pixels + self.line_height - 1) / self.line_height;
+
+        if lines_to_scroll >= self.total_lines {
+            // Scrolling more than the entire screen - just clear everything
+            self.clear();
+            self.cursor_y = self.top_margin;
+            self.first_line_index = 0;
+            return;
+        }
+
+        // Ring buffer magic: for each line to scroll
+        for _ in 0..lines_to_scroll {
+            // Clear the physical line at first_line_index (the current top line)
+            // This line will be reused as the new bottom line
+            self.clear_physical_line(self.first_line_index);
+
+            // Move the ring buffer forward
+            // The line we just cleared is now logically at the bottom
+            self.first_line_index = (self.first_line_index + 1) % self.total_lines;
+        }
+
+        // Don't change cursor_y - it should stay at the last line position
+        // The physical line it points to is now a different logical line,
+        // but that's the whole point of the ring buffer!
     }
 
     /// Write a single line (no newline handling). Draws the provided bytes
     /// at the current cursor (cursor_x, cursor_y). Advances cursor to next line.
     pub fn write_line(&mut self, line: &[u8]) {
-        if self.fb_addr.is_null() {
+        if self.fb_addr.is_null() || self.total_lines == 0 {
             return;
         }
 
-        // Ensure we don't render out-of-bounds vertically
-        if self.cursor_y + self.line_height > self.fb_height {
-            // Scroll up by one logical line
-            let scroll_pixels = self.line_height + self.line_spacing;
-            self.scroll_up(scroll_pixels);
+        let line_stride = self.line_height + self.line_spacing;
+
+        // Check if we need to scroll
+        if self.current_logical_line >= self.total_lines {
+            // Scroll: clear the top line and move first_line_index forward
+            self.clear_physical_line(self.first_line_index);
+            self.first_line_index = (self.first_line_index + 1) % self.total_lines;
+            // Reset to last logical line
+            self.current_logical_line = self.total_lines - 1;
         }
 
+        // Convert logical line to physical line
+        let physical_line = (self.first_line_index + self.current_logical_line) % self.total_lines;
+
+        // Clear this physical line before writing
+        self.clear_physical_line(physical_line);
+
+        // Calculate physical Y position
+        self.cursor_y = self.top_margin + (physical_line * line_stride);
+
         // Render using draw_string from font.rs
-        // draw_string(addr, pitch, x, y, color, font, message, width, height)
         unsafe {
             draw_string(
                 self.fb_addr,
@@ -188,8 +260,8 @@ impl<'a> ScrollingTextRenderer<'a> {
             );
         }
 
-        // Advance cursor to next line
-        self.cursor_y += self.line_height + self.line_spacing;
+        // Advance to next logical line
+        self.current_logical_line += 1;
     }
 
     /// Write text handling '\n' as newlines. Splits on newline and writes each line.
@@ -211,6 +283,9 @@ impl<'a> ScrollingTextRenderer<'a> {
     pub fn reset_cursor(&mut self) {
         self.cursor_x = self.left_margin;
         self.cursor_y = self.top_margin;
+        // Also reset ring buffer state
+        self.current_logical_line = 0;
+        self.first_line_index = 0;
     }
 
     /// Set absolute cursor (x, y) in pixels.
@@ -264,6 +339,18 @@ impl<'a> ScrollingTextRenderer<'a> {
         if self.cursor_y + rows_to_draw > self.fb_height {
             let overflow = self.cursor_y + rows_to_draw - self.fb_height;
             self.scroll_up(overflow);
+
+            // After scrolling, reposition cursor to account for ring buffer
+            if self.total_lines > 0 {
+                let bottom_physical_line = (self.first_line_index + self.total_lines - 1) % self.total_lines;
+                let line_stride = self.line_height + self.line_spacing;
+                let bottom_y = self.top_margin + (bottom_physical_line * line_stride);
+                // Adjust cursor_y to maintain relative position
+                self.cursor_y = bottom_y - (overflow - line_stride);
+                if self.cursor_y < self.top_margin {
+                    self.cursor_y = self.top_margin;
+                }
+            }
         }
 
         // If after scrolling it still doesn't fit, clamp the number of rows.
@@ -315,6 +402,13 @@ impl<'a> ScrollingTextRenderer<'a> {
 
         // Advance cursor below the canvas
         self.cursor_y += rows_to_draw + self.line_spacing;
+
+        // Update logical line tracking to stay in sync
+        let line_stride = self.line_height + self.line_spacing;
+        if line_stride > 0 && self.cursor_y >= self.top_margin {
+            let lines_consumed = (rows_to_draw + self.line_spacing + line_stride - 1) / line_stride;
+            self.current_logical_line += lines_consumed;
+        }
     }
 
     /// Unsafe variant that draws a canvas from a raw pointer to u32 pixels (row-major).
@@ -328,6 +422,18 @@ impl<'a> ScrollingTextRenderer<'a> {
         if self.cursor_y + src_height > self.fb_height {
             let overflow = self.cursor_y + src_height - self.fb_height;
             self.scroll_up(overflow);
+
+            // After scrolling, reposition cursor to account for ring buffer
+            if self.total_lines > 0 {
+                let bottom_physical_line = (self.first_line_index + self.total_lines - 1) % self.total_lines;
+                let line_stride = self.line_height + self.line_spacing;
+                let bottom_y = self.top_margin + (bottom_physical_line * line_stride);
+                // Adjust cursor_y to maintain relative position
+                self.cursor_y = bottom_y - (overflow - line_stride);
+                if self.cursor_y < self.top_margin {
+                    self.cursor_y = self.top_margin;
+                }
+            }
         }
 
         let max_rows_available = if self.cursor_y >= self.fb_height {
@@ -351,6 +457,13 @@ impl<'a> ScrollingTextRenderer<'a> {
         let cols_to_draw = cmp::min(src_width, max_cols);
         if cols_to_draw == 0 {
             self.cursor_y += rows_to_draw + self.line_spacing;
+
+            // Update logical line tracking
+            let line_stride = self.line_height + self.line_spacing;
+            if line_stride > 0 && self.cursor_y >= self.top_margin {
+                let lines_consumed = (rows_to_draw + self.line_spacing + line_stride - 1) / line_stride;
+                self.current_logical_line += lines_consumed;
+            }
             return;
         }
 
@@ -367,6 +480,13 @@ impl<'a> ScrollingTextRenderer<'a> {
         }
 
         self.cursor_y += rows_to_draw + self.line_spacing;
+
+        // Update logical line tracking to stay in sync
+        let line_stride = self.line_height + self.line_spacing;
+        if line_stride > 0 && self.cursor_y >= self.top_margin {
+            let lines_consumed = (rows_to_draw + self.line_spacing + line_stride - 1) / line_stride;
+            self.current_logical_line += lines_consumed;
+        }
     }
 }
 

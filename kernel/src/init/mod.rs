@@ -30,8 +30,8 @@ pub fn init_kernel() -> Result<(), &'static str> {
         Ok(Some(mut fbctx)) => {
             fbctx.write_line("Initializing kernel subsystems...");
 
-            init_core_subsystems();
             init_memory_and_heap()?;
+            init_core_subsystems();
             init_higher_level_subsystems();
             launch_userspace_components();
 
