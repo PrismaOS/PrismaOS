@@ -49,7 +49,12 @@
       "Bash(timeout 60 cargo check:*)",
       "Bash(timeout 180 cargo build:*)",
       "Bash(timeout 180 cargo rustc:*)",
-      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 180 cargo build:*)"
+      "Bash(RUSTFLAGS=\"-C panic=abort\" timeout 180 cargo build:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:crates.io)",
+      "Bash(timeout 60 cargo build:*)"
     ],
     "deny": [],
     "ask": []

@@ -598,6 +598,7 @@ dependencies = [
  "pic8259",
  "serde",
  "spin",
+ "talc",
  "uart_16550",
  "volatile 0.4.6",
  "x86_64 0.15.2",
@@ -1192,6 +1193,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "talc"
+version = "4.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3ae828aa394de34c7de08f522d1b86bd1c182c668d27da69caadda00590f26d"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ pub mod paging;
 pub mod dma;
 //pub mod mmio;
 
-pub use allocator::{init_heap, init_bootstrap_heap, HEAP_SIZE, HEAP_START, heap_stats};
+pub use allocator::{init_heap, HEAP_SIZE, HEAP_START, heap_stats};
 //pub use mmio::{XhciMmioMapper, init_mmio_mapping, mmio_stats};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
