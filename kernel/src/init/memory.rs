@@ -33,6 +33,20 @@ pub fn init_memory_and_heap() -> Result<(), &'static str> {
                     kprintln!("[OK] Kernel heap initialized with proper virtual memory mapping");
                     let stats = memory::heap_stats();
                     kprintln!("     Heap size: {} MiB, Start: {:#x}", stats.total_size / (1024 * 1024), memory::HEAP_START);
+                    
+                    // TEST: Try basic allocations to verify heap works
+                    kprintln!("[TEST] Testing heap allocations...");
+                    use alloc::vec::Vec;
+                    let test1 = Vec::<u8>::with_capacity(64);
+                    kprintln!("[TEST] 64-byte Vec allocation: SUCCESS");
+                    drop(test1);
+                    let test2 = Vec::<u8>::with_capacity(1024);
+                    kprintln!("[TEST] 1KB Vec allocation: SUCCESS");
+                    drop(test2);
+                    let test3 = Vec::<u8>::with_capacity(65536);
+                    kprintln!("[TEST] 64KB Vec allocation: SUCCESS");
+                    drop(test3);
+                    kprintln!("[TEST] All heap tests passed!");
                 }
                 Err(_) => {
                     return Err("Failed to initialize kernel heap");

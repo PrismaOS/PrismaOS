@@ -142,15 +142,15 @@ extern "x86-interrupt" fn page_fault_handler(
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
-    //println!("🚨 PAGE FAULT:");
-    //println!("   Address: {:#x}", fault_address.as_u64());
-    //println!("   User Mode: {}", is_user_mode);
-    //println!("   Caused by Write: {}", error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE));
-    //println!("   Page Present: {}", error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION));
+    crate::kprintln!("🚨 PAGE FAULT:");
+    crate::kprintln!("   Address: {:#x}", fault_address.as_u64());
+    crate::kprintln!("   User Mode: {}", is_user_mode);
+    crate::kprintln!("   Caused by Write: {}", error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE));
+    crate::kprintln!("   Page Present: {}", error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION));
     
     if is_user_mode {
-        //println!("   → Userspace page fault - would terminate process");
-        //println!("   → Kernel memory remains protected");
+        crate::kprintln!("   → Userspace page fault - would terminate process");
+        crate::kprintln!("   → Kernel memory remains protected");
         // In a real implementation: terminate process, don't panic kernel
     } else {
         //println!("   → Kernel page fault - this is a kernel bug!");
@@ -167,14 +167,14 @@ extern "x86-interrupt" fn general_protection_fault_handler(
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
-    //println!("🚨 GENERAL PROTECTION FAULT:");
-    //println!("   Error Code: {:#x}", error_code);
-    //println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
-    //println!("   User Mode: {}", is_user_mode);
+    crate::kprintln!("🚨 GENERAL PROTECTION FAULT:");
+    crate::kprintln!("   Error Code: {:#x}", error_code);
+    crate::kprintln!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
+    crate::kprintln!("   User Mode: {}", is_user_mode);
     
     if is_user_mode {
-        //println!("   → Userspace privilege violation - would terminate process");
-        //println!("   → Kernel remains protected");
+        crate::kprintln!("   → Userspace privilege violation - would terminate process");
+        crate::kprintln!("   → Kernel remains protected");
         // In a real implementation: terminate process, don't panic kernel
     } else {
         //println!("   → Kernel privilege violation - kernel bug!");

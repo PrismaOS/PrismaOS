@@ -304,23 +304,8 @@ impl BuddyAllocator {
 
             addr as *mut u8
         } else {
-            // DIAGNOSTIC: Print heap state right before failing
-            crate::kprintln!("=== ALLOCATION FAILURE DIAGNOSTIC ===");
-            crate::kprintln!("Requested: {} bytes (order {})", size, order);
-            crate::kprintln!("Heap: {:#x} - {:#x} ({} bytes)", 
-                self.heap_start, self.heap_start + self.heap_size, self.heap_size);
-            crate::kprintln!("Free blocks per order:");
-            for o in MIN_ORDER..=MAX_ORDER {
-                let mut count = 0;
-                let mut current = self.free_lists[o];
-                while let Some(block) = current {
-                    count += 1;
-                    current = block.as_ref().next;
-                }
-                if count > 0 {
-                    crate::kprintln!("  Order {} ({}KB): {} blocks", o, (1 << o) / 1024, count);
-                }
-            }
+            // Allocation failed - increment failure counter
+            self.stats.failed_allocations += 1;
             ptr::null_mut()
         }
     }
@@ -517,11 +502,7 @@ pub fn heap_stats() -> HeapStats {
         total_size: HEAP_SIZE,
         used_size: stats.bytes_in_use,
         free_size: HEAP_SIZE.saturating_sub(stats.bytes_in_use),
-        fragmentation_ratio: if stats.bytes_in_use > 0 {
-            (stats.bytes_allocated as f32 - stats.bytes_in_use as f32) / stats.bytes_allocated as f32
-        } else {
-            0.0
-        },
+        fragmentation_ratio: 0.0, // Disable fragmentation calc to avoid FPU issues
         total_allocations: stats.total_allocations,
         total_deallocations: stats.total_deallocations,
         active_allocations: stats.active_allocations,
@@ -544,23 +525,11 @@ pub struct HeapStats {
 /// Custom allocation error handling
 #[alloc_error_handler]
 fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
-    let stats = ALLOCATOR.inner.lock().get_stats();
-
+    // DO NOT try to lock the allocator here - we're already in an allocation failure
+    // and the lock is likely already held
     panic!(
-        "Allocation error: failed to allocate {} bytes with alignment {}\n\
-         Heap stats:\n\
-         - Total allocations: {}\n\
-         - Total deallocations: {}\n\
-         - Active allocations: {}\n\
-         - Bytes in use: {} / {}\n\
-         - Failed allocations: {}",
+        "Allocation error: failed to allocate {} bytes with alignment {}",
         layout.size(),
-        layout.align(),
-        stats.total_allocations,
-        stats.total_deallocations,
-        stats.active_allocations,
-        stats.bytes_in_use,
-        HEAP_SIZE,
-        stats.failed_allocations
-    )
+        layout.align()
+    );
 }

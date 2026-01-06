@@ -9,6 +9,7 @@ use crate::{
     mft::{MftRecord, MftManager, Attribute, AttributeType, AttributeData, FileRecordNumber, RecordFlags},
     journal::{JournalManager, OperationType},
 };
+use lib_kernel::kprintln;
 
 /// File timestamps
 #[derive(Debug, Clone, Copy)]
@@ -171,7 +172,7 @@ impl StandardInformation {
     }
 
     pub fn serialize(&self) -> Vec<u8> {
-        let mut data = Vec::new();
+        let mut data = Vec::with_capacity(72);
         data.extend_from_slice(&self.times.creation_time.to_le_bytes());
         data.extend_from_slice(&self.times.last_access_time.to_le_bytes());
         data.extend_from_slice(&self.times.last_write_time.to_le_bytes());
@@ -394,10 +395,12 @@ impl FileRecordManager {
         parent_directory: FileRecordNumber,
         name: String,
     ) -> FilesystemResult<FileRecordNumber> {
+        kprintln!("[FileRecord] create_directory: '{}'", name);
         let transaction_id = self.journal_manager.begin_transaction();
 
         // Allocate new directory record
         let dir_record_number = self.mft_manager.allocate_record()?;
+        kprintln!("[FileRecord] Allocated record {}", dir_record_number);
 
         // Create MFT record for directory
         let mut record = MftRecord::new(dir_record_number);
@@ -405,23 +408,40 @@ impl FileRecordManager {
         flags.in_use = true;
         flags.is_directory = true;
         record.header.set_flags(flags);
+        kprintln!("[FileRecord] Flags set");
 
         // Add Standard Information attribute
+        kprintln!("[FileRecord] Creating StandardInformation...");
         let std_info = StandardInformation::new_directory();
-        let std_info_attr = Attribute::new_resident(AttributeType::StandardInformation, std_info.serialize());
+        kprintln!("[FileRecord] Serializing StandardInformation...");
+        let std_info_data = std_info.serialize();
+        kprintln!("[FileRecord] Creating StandardInformation attribute...");
+        let std_info_attr = Attribute::new_resident(AttributeType::StandardInformation, std_info_data);
+        kprintln!("[FileRecord] Adding StandardInformation attribute...");
         record.add_attribute(std_info_attr);
+        kprintln!("[FileRecord] StandardInformation added");
 
         // Add File Name attribute
+        kprintln!("[FileRecord] Creating FileName...");
         let file_name = FileName::new(parent_directory, name.clone(), true);
-        let file_name_attr = Attribute::new_resident(AttributeType::FileName, file_name.serialize());
+        kprintln!("[FileRecord] Serializing FileName...");
+        let file_name_data = file_name.serialize();
+        kprintln!("[FileRecord] Creating FileName attribute...");
+        let file_name_attr = Attribute::new_resident(AttributeType::FileName, file_name_data);
+        kprintln!("[FileRecord] Adding FileName attribute...");
         record.add_attribute(file_name_attr);
+        kprintln!("[FileRecord] FileName added");
 
         // Add Index Root attribute for directory entries
+        kprintln!("[FileRecord] Creating IndexRoot...");
         let index_root_data = create_empty_index_root();
+        kprintln!("[FileRecord] Creating IndexRoot attribute...");
         let index_root_attr = Attribute::new_resident(AttributeType::IndexRoot, index_root_data);
+        kprintln!("[FileRecord] Adding IndexRoot attribute...");
         record.add_attribute(index_root_attr);
-
-        // Log the operation
+        kprintln!("[FileRecord] IndexRoot added");
+        
+        kprintln!("[FileRecord] Attributes added, logging operation...");
         self.journal_manager.log_operation(
             transaction_id,
             OperationType::CreateDirectory,
@@ -520,7 +540,7 @@ impl FileRecordManager {
                 if let AttributeData::Resident(ref mut data) = attr.data {
                     let mut std_info = StandardInformation::deserialize(data)?;
                     std_info.times.update_access();
-                    *data = std_info.serialize();
+                    *data = std_info.serialize().to_vec();
                 }
                 break;
             }
@@ -578,11 +598,9 @@ impl FileRecordManager {
 
 // Helper functions
 fn get_current_time() -> u64 {
-    static mut TIME_COUNTER: u64 = 1;
-    unsafe {
-        TIME_COUNTER += 1;
-        TIME_COUNTER
-    }
+    // TODO: Implement proper timestamp using RTC/TSC
+    // For now, return a fixed timestamp
+    0x01D0000000000000 // Arbitrary NT timestamp
 }
 
 fn create_empty_index_root() -> Vec<u8> {

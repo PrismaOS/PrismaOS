@@ -588,11 +588,14 @@ impl GalleonFilesystem {
     /// Create a new directory
     pub fn create_directory(&mut self, parent_dir: FileRecordNumber, name: String) -> FilesystemResult<FileRecordNumber> {
         kprintln!("Creating directory '{}' in directory {}", name, parent_dir);
+        kprintln!("About to call file_manager.create_directory...");
         let dir_record = self.file_manager.create_directory(parent_dir, name.clone())?;
         kprintln!("Directory record {} created", dir_record);
 
         // Add to parent directory index
+        kprintln!("About to add directory to parent index...");
         let file_name = FileName::new(parent_dir, name, true);
+        kprintln!("FileName created, inserting into btree...");
         self.btree_manager.insert(file_name.name.clone(), dir_record, file_name)?;
         kprintln!("Directory added to parent directory index");
 

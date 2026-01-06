@@ -179,6 +179,15 @@ unsafe extern "C" fn kmain() -> ! {
                 kprintln!("   Used space:  {} KB", stats.used_space / 1024);
                 kprintln!("   Cluster size: {} bytes", stats.cluster_size);
                 kprintln!("   Total clusters: {}", stats.total_clusters);
+                
+                // Print heap usage - test if we can even call the function
+                kprintln!("About to get heap stats...");
+                let heap_stats = lib_kernel::memory::heap_stats();
+                kprintln!("Got heap stats, total_size = {}", heap_stats.total_size);
+                kprintln!("Heap Usage:");
+                kprintln!("   Total: {} KB", heap_stats.total_size / 1024);
+                kprintln!("   Used:  {} KB", heap_stats.used_size / 1024);
+                kprintln!("   Free:  {} KB", heap_stats.free_size / 1024);
             }
             Err(e) => {
                 kprintln!("Could not get filesystem stats: {:?}", e);
