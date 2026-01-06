@@ -304,6 +304,21 @@ impl BuddyAllocator {
     pub fn get_stats(&self) -> AllocatorStats {
         self.stats
     }
+
+    /// Count how many free blocks exist (for debugging)
+    pub fn count_free_blocks(&self) -> usize {
+        let mut count = 0;
+        for order in MIN_ORDER..=MAX_ORDER {
+            let mut current = self.free_lists[order];
+            while let Some(block) = current {
+                count += 1;
+                unsafe {
+                    current = block.as_ref().next;
+                }
+            }
+        }
+        count
+    }
 }
 
 // Global allocator instance
@@ -404,7 +419,9 @@ pub fn init_heap(
         BOOTSTRAP_ACTIVE = false;
     }
 
-    crate::kprintln!("[HEAP] Buddy allocator initialized: {} MiB", HEAP_SIZE / (1024 * 1024));
+    let block_count = ALLOCATOR.inner.lock().count_free_blocks();
+    crate::kprintln!("[HEAP] Buddy allocator initialized: {} MiB, {} free blocks",
+        HEAP_SIZE / (1024 * 1024), block_count);
 
     Ok(())
 }

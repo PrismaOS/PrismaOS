@@ -406,6 +406,7 @@ version = "0.1.0"
 dependencies = [
  "ide",
  "lib_kernel",
+ "x86_64 0.15.2",
 ]
 
 [[package]]
@@ -513,6 +514,7 @@ name = "ide"
 version = "0.1.0"
 dependencies = [
  "lib_kernel",
+ "x86_64 0.15.2",
 ]
 
 [[package]]

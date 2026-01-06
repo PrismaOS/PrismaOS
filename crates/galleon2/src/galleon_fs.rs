@@ -365,6 +365,7 @@ impl GalleonFilesystem {
         let system_clusters = super_block.index_allocation_start + 100; // Reserve some for indexes
         kprintln!("Marking {} system clusters as used", system_clusters);
         for cluster in 0..system_clusters {
+            kprintln!("Marking cluster {} as used", cluster);
             allocator.bitmap.set_cluster_used(cluster)?;
         }
         allocator.bitmap.flush_bitmap()?;

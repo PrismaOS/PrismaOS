@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 ide = { workspace = true }
 lib_kernel = { workspace = true }
+x86_64 = "0.15"

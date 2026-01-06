@@ -581,6 +581,11 @@ impl core::fmt::Write for LineWriter {
 #[macro_export]
 macro_rules! kprintln {
     ($($arg:tt)*) => {{
+        {
+            //for _ in 1..10 {
+            //    x86_64::instructions::hlt(); //delay
+            //}
+        }
         let mut writer = $crate::scrolling_text::LineWriter::new();
         use ::core::fmt::Write;
         let _ = ::core::writeln!(&mut writer, $($arg)*);
