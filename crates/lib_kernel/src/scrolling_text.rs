@@ -13,9 +13,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 // Fixed buffer dimensions (heap-allocated)
-// Conservative size for early boot heap (~15KB total)
+// Keep small for bootstrap heap compatibility (renderer created before main heap init)
 const MAX_COLS: usize = 80;   // Maximum characters per line
-const MAX_LINES: usize = 16;  // Maximum lines in scrollback buffer
+const MAX_LINES: usize = 30;   // Small buffer - fits in 64KB bootstrap heap
 
 /// A single character cell with color attributes
 #[derive(Copy, Clone, Debug)]

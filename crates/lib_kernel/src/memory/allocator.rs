@@ -1,4 +1,6 @@
-use linked_list_allocator::LockedHeap;
+use core::alloc::{GlobalAlloc, Layout};
+use core::ptr::{self, NonNull};
+use spin::Mutex;
 use x86_64::{
     structures::paging::{
         mapper::MapToError, FrameAllocator, Mapper, Page, PageTableFlags, Size4KiB,
@@ -6,14 +8,335 @@ use x86_64::{
     VirtAddr,
 };
 
-#[global_allocator]
-static ALLOCATOR: LockedHeap = LockedHeap::empty();
-
 // Kernel heap configuration
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 256 * 1024 * 1024; // 256 MiB - kernel heap size
+pub const HEAP_SIZE: usize = 256 * 1024 * 1024; // 256 MiB
 
-// Small bootstrap heap for early allocations before we set up virtual memory
+// Buddy allocator configuration
+const MIN_BLOCK_SIZE: usize = 32; // Minimum allocation size (must fit BlockHeader)
+const MAX_ORDER: usize = 24; // 2^24 = 16 MiB max single allocation
+const MIN_ORDER: usize = 5; // 2^5 = 32 bytes min allocation
+
+// Block header stored at the beginning of each free block
+#[repr(C)]
+struct BlockHeader {
+    next: Option<NonNull<BlockHeader>>,
+    prev: Option<NonNull<BlockHeader>>,
+}
+
+impl BlockHeader {
+    const fn new() -> Self {
+        Self {
+            next: None,
+            prev: None,
+        }
+    }
+}
+
+/// Production-grade buddy allocator with anti-fragmentation and statistics
+pub struct BuddyAllocator {
+    heap_start: usize,
+    heap_size: usize,
+    // Free lists for each order (2^order sized blocks)
+    free_lists: [Option<NonNull<BlockHeader>>; MAX_ORDER + 1],
+    // Statistics
+    stats: AllocatorStats,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AllocatorStats {
+    pub total_allocations: u64,
+    pub total_deallocations: u64,
+    pub active_allocations: u64,
+    pub bytes_allocated: usize,
+    pub bytes_freed: usize,
+    pub bytes_in_use: usize,
+    pub failed_allocations: u64,
+}
+
+impl AllocatorStats {
+    const fn new() -> Self {
+        Self {
+            total_allocations: 0,
+            total_deallocations: 0,
+            active_allocations: 0,
+            bytes_allocated: 0,
+            bytes_freed: 0,
+            bytes_in_use: 0,
+            failed_allocations: 0,
+        }
+    }
+}
+
+// SAFETY: BuddyAllocator is only accessed through a Mutex, ensuring single-threaded access
+unsafe impl Send for BuddyAllocator {}
+
+impl BuddyAllocator {
+    const fn new() -> Self {
+        Self {
+            heap_start: 0,
+            heap_size: 0,
+            free_lists: [None; MAX_ORDER + 1],
+            stats: AllocatorStats::new(),
+        }
+    }
+
+    /// Initialize the allocator with a memory region
+    unsafe fn init(&mut self, heap_start: *mut u8, heap_size: usize) {
+        self.heap_start = heap_start as usize;
+        self.heap_size = heap_size;
+
+        // Clear all free lists
+        for list in &mut self.free_lists {
+            *list = None;
+        }
+
+        // Add free blocks in descending order size, ensuring proper alignment
+        // This builds the free list from the entire heap
+        let mut current_addr = heap_start as usize;
+        let end_addr = current_addr + heap_size;
+
+        while current_addr < end_addr {
+            // Find the largest block we can create at this address
+            let remaining = end_addr - current_addr;
+            let mut order = MAX_ORDER;
+
+            // Find the largest properly-aligned block that fits
+            while order >= MIN_ORDER {
+                let block_size = 1 << order;
+
+                // Check if block fits and address is properly aligned for this order
+                if block_size <= remaining && (current_addr & (block_size - 1)) == 0 {
+                    self.add_free_block(current_addr, order);
+                    current_addr += block_size;
+                    break;
+                }
+
+                order -= 1;
+            }
+
+            // If we couldn't add any block, we're done
+            if order < MIN_ORDER {
+                break;
+            }
+        }
+
+        // Reset statistics
+        self.stats = AllocatorStats::new();
+    }
+
+    /// Convert size to order (log2 rounded up)
+    fn size_to_order(size: usize) -> usize {
+        let size = size.max(MIN_BLOCK_SIZE);
+        let mut order = 0;
+        let mut block_size = 1;
+
+        while block_size < size && order < MAX_ORDER {
+            block_size <<= 1;
+            order += 1;
+        }
+
+        order.max(MIN_ORDER)
+    }
+
+    /// Get buddy address for a block
+    fn get_buddy(&self, addr: usize, order: usize) -> usize {
+        let block_size = 1 << order;
+        addr ^ block_size
+    }
+
+    /// Check if address is within heap bounds
+    fn is_valid_address(&self, addr: usize) -> bool {
+        addr >= self.heap_start && addr < self.heap_start + self.heap_size
+    }
+
+    /// Add a free block to the appropriate free list
+    unsafe fn add_free_block(&mut self, addr: usize, order: usize) {
+        if order > MAX_ORDER || !self.is_valid_address(addr) {
+            return;
+        }
+
+        let header = addr as *mut BlockHeader;
+        (*header).next = self.free_lists[order];
+        (*header).prev = None;
+
+        if let Some(mut next) = self.free_lists[order] {
+            next.as_mut().prev = NonNull::new(header);
+        }
+
+        self.free_lists[order] = NonNull::new(header);
+    }
+
+    /// Remove a specific block from its free list
+    unsafe fn remove_free_block(&mut self, addr: usize, order: usize) {
+        if order > MAX_ORDER {
+            return;
+        }
+
+        let header = addr as *mut BlockHeader;
+        let prev = (*header).prev;
+        let next = (*header).next;
+
+        if let Some(mut prev_block) = prev {
+            prev_block.as_mut().next = next;
+        } else {
+            // This was the head of the list
+            self.free_lists[order] = next;
+        }
+
+        if let Some(mut next_block) = next {
+            next_block.as_mut().prev = prev;
+        }
+    }
+
+    /// Find a free block in the free list
+    unsafe fn find_free_block(&self, order: usize) -> Option<usize> {
+        if order > MAX_ORDER {
+            return None;
+        }
+
+        self.free_lists[order].map(|ptr| ptr.as_ptr() as usize)
+    }
+
+    /// Allocate a block of the given order
+    unsafe fn allocate_order(&mut self, order: usize) -> Option<usize> {
+        if order > MAX_ORDER {
+            self.stats.failed_allocations += 1;
+            return None;
+        }
+
+        // Try to find a block of this order
+        if let Some(addr) = self.find_free_block(order) {
+            self.remove_free_block(addr, order);
+            return Some(addr);
+        }
+
+        // No block of this order, try to split a larger block
+        if order < MAX_ORDER {
+            if let Some(larger_block) = self.allocate_order(order + 1) {
+                // Split the larger block
+                let buddy = larger_block + (1 << order);
+                self.add_free_block(buddy, order);
+                return Some(larger_block);
+            }
+        }
+
+        // Out of memory
+        self.stats.failed_allocations += 1;
+        None
+    }
+
+    /// Deallocate a block and coalesce with buddy if possible
+    unsafe fn deallocate_order(&mut self, addr: usize, order: usize) {
+        if order >= MAX_ORDER || !self.is_valid_address(addr) {
+            return;
+        }
+
+        // Try to coalesce with buddy
+        let buddy_addr = self.get_buddy(addr, order);
+
+        if self.is_valid_address(buddy_addr) && self.is_free(buddy_addr, order) {
+            // Buddy is free, coalesce
+            self.remove_free_block(buddy_addr, order);
+            let coalesced_addr = addr.min(buddy_addr);
+            self.deallocate_order(coalesced_addr, order + 1);
+        } else {
+            // Cannot coalesce, add to free list
+            self.add_free_block(addr, order);
+        }
+    }
+
+    /// Check if a block is in the free list
+    unsafe fn is_free(&self, addr: usize, order: usize) -> bool {
+        if order > MAX_ORDER {
+            return false;
+        }
+
+        let mut current = self.free_lists[order];
+        while let Some(block) = current {
+            if block.as_ptr() as usize == addr {
+                return true;
+            }
+            current = block.as_ref().next;
+        }
+        false
+    }
+
+    /// Allocate memory with proper alignment
+    unsafe fn alloc(&mut self, layout: Layout) -> *mut u8 {
+        let size = layout.size().max(layout.align()).max(MIN_BLOCK_SIZE);
+        let order = Self::size_to_order(size);
+        let block_size = 1 << order;
+
+        if let Some(addr) = self.allocate_order(order) {
+            // Update statistics
+            self.stats.total_allocations += 1;
+            self.stats.active_allocations += 1;
+            self.stats.bytes_allocated += block_size;
+            self.stats.bytes_in_use += block_size;
+
+            addr as *mut u8
+        } else {
+            ptr::null_mut()
+        }
+    }
+
+    /// Deallocate memory
+    unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
+        let addr = ptr as usize;
+        if !self.is_valid_address(addr) {
+            return;
+        }
+
+        let size = layout.size().max(layout.align()).max(MIN_BLOCK_SIZE);
+        let order = Self::size_to_order(size);
+        let block_size = 1 << order;
+
+        // Update statistics
+        self.stats.total_deallocations += 1;
+        self.stats.active_allocations = self.stats.active_allocations.saturating_sub(1);
+        self.stats.bytes_freed += block_size;
+        self.stats.bytes_in_use = self.stats.bytes_in_use.saturating_sub(block_size);
+
+        self.deallocate_order(addr, order);
+    }
+
+    pub fn get_stats(&self) -> AllocatorStats {
+        self.stats
+    }
+}
+
+// Global allocator instance
+struct LockedAllocator {
+    inner: Mutex<BuddyAllocator>,
+}
+
+impl LockedAllocator {
+    const fn new() -> Self {
+        Self {
+            inner: Mutex::new(BuddyAllocator::new()),
+        }
+    }
+
+    unsafe fn init(&self, heap_start: *mut u8, heap_size: usize) {
+        self.inner.lock().init(heap_start, heap_size);
+    }
+}
+
+unsafe impl GlobalAlloc for LockedAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        self.inner.lock().alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        self.inner.lock().dealloc(ptr, layout)
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: LockedAllocator = LockedAllocator::new();
+
+// Bootstrap heap for early allocations
 #[repr(C, align(16))]
 struct BootstrapHeap {
     data: [u8; 64 * 1024], // 64KB bootstrap heap
@@ -24,7 +347,10 @@ static mut BOOTSTRAP_ACTIVE: bool = false;
 
 /// Initialize bootstrap heap for early kernel allocations
 pub unsafe fn init_bootstrap_heap() {
-    ALLOCATOR.lock().init(BOOTSTRAP_HEAP.data.as_mut_ptr(), 64 * 1024);
+    ALLOCATOR.init(
+        core::ptr::addr_of_mut!(BOOTSTRAP_HEAP.data).cast(),
+        64 * 1024
+    );
     BOOTSTRAP_ACTIVE = true;
 }
 
@@ -42,67 +368,99 @@ pub fn init_heap(
     };
 
     let total_pages = ((HEAP_SIZE + 4095) / 4096) as u64;
-    crate::kprintln!("[HEAP] Allocating {} pages ({} MiB) for heap...", total_pages, HEAP_SIZE / (1024 * 1024));
-    
+    crate::kprintln!("[HEAP] Allocating {} pages ({} MiB) for heap...",
+        total_pages, HEAP_SIZE / (1024 * 1024));
+
     let mut allocated_pages = 0u64;
-    
+
     // Map each page of the heap to physical memory
     for page in page_range {
         let frame = frame_allocator
             .allocate_frame()
             .ok_or_else(|| {
                 crate::kprintln!("[HEAP ERROR] Failed to allocate frame after {} pages!", allocated_pages);
-                crate::kprintln!("[HEAP ERROR] Needed {} total pages, got {} pages", total_pages, allocated_pages);
+                crate::kprintln!("[HEAP ERROR] Needed {} total pages, got {} pages",
+                    total_pages, allocated_pages);
                 MapToError::FrameAllocationFailed
             })?;
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe { 
+        unsafe {
             let flush_result = mapper.map_to(page, frame, flags, frame_allocator)?;
             flush_result.flush();
         };
         allocated_pages += 1;
-        
+
         // Progress indicator every 1000 pages
         if allocated_pages % 1000 == 0 {
             crate::kprintln!("[HEAP] Allocated {} / {} pages...", allocated_pages, total_pages);
         }
     }
-    
+
     crate::kprintln!("[HEAP] Successfully allocated all {} pages", allocated_pages);
 
     // Switch from bootstrap heap to main heap
     unsafe {
-        // Re-initialize allocator with the new larger heap
-        ALLOCATOR.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
+        ALLOCATOR.init(HEAP_START as *mut u8, HEAP_SIZE);
         BOOTSTRAP_ACTIVE = false;
     }
+
+    crate::kprintln!("[HEAP] Buddy allocator initialized: {} MiB", HEAP_SIZE / (1024 * 1024));
 
     Ok(())
 }
 
 /// Get heap usage statistics
 pub fn heap_stats() -> HeapStats {
-    // The linked list allocator doesn't provide usage stats by default
-    // This is a placeholder for future heap instrumentation
+    let stats = ALLOCATOR.inner.lock().get_stats();
+
     HeapStats {
         total_size: HEAP_SIZE,
-        used_size: 0, // Would need custom allocator to track this
-        free_size: HEAP_SIZE,
-        fragmentation_ratio: 0.0,
+        used_size: stats.bytes_in_use,
+        free_size: HEAP_SIZE.saturating_sub(stats.bytes_in_use),
+        fragmentation_ratio: if stats.bytes_in_use > 0 {
+            (stats.bytes_allocated as f32 - stats.bytes_in_use as f32) / stats.bytes_allocated as f32
+        } else {
+            0.0
+        },
+        total_allocations: stats.total_allocations,
+        total_deallocations: stats.total_deallocations,
+        active_allocations: stats.active_allocations,
+        failed_allocations: stats.failed_allocations,
     }
 }
 
 #[derive(Debug)]
 pub struct HeapStats {
     pub total_size: usize,
-    pub used_size: usize, 
+    pub used_size: usize,
     pub free_size: usize,
     pub fragmentation_ratio: f32,
+    pub total_allocations: u64,
+    pub total_deallocations: u64,
+    pub active_allocations: u64,
+    pub failed_allocations: u64,
 }
 
 /// Custom allocation error handling
 #[alloc_error_handler]
 fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
-    panic!("Allocation error: failed to allocate {} bytes with alignment {}", 
-           layout.size(), layout.align())
+    let stats = ALLOCATOR.inner.lock().get_stats();
+
+    panic!(
+        "Allocation error: failed to allocate {} bytes with alignment {}\n\
+         Heap stats:\n\
+         - Total allocations: {}\n\
+         - Total deallocations: {}\n\
+         - Active allocations: {}\n\
+         - Bytes in use: {} / {}\n\
+         - Failed allocations: {}",
+        layout.size(),
+        layout.align(),
+        stats.total_allocations,
+        stats.total_deallocations,
+        stats.active_allocations,
+        stats.bytes_in_use,
+        HEAP_SIZE,
+        stats.failed_allocations
+    )
 }
