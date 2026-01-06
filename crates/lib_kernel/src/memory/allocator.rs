@@ -174,6 +174,12 @@ impl BuddyAllocator {
         if !self.is_valid_address(addr) {
             return false;
         }
+        
+        // Check alignment
+        let block_size = 1 << order;
+        if addr & (block_size - 1) != 0 {
+            return false;
+        }
 
         // Try to write to the address to ensure it's mapped and writable
         let header = addr as *mut BlockHeader;
@@ -185,6 +191,10 @@ impl BuddyAllocator {
         (*header).prev = None;
 
         if let Some(mut next) = self.free_lists[order] {
+            let next_addr = next.as_ptr() as usize;
+            if !self.is_valid_address(next_addr) {
+                return false;
+            }
             next.as_mut().prev = NonNull::new(header);
         }
 
@@ -255,7 +265,13 @@ impl BuddyAllocator {
 
     /// Deallocate a block and coalesce with buddy if possible
     unsafe fn deallocate_order(&mut self, addr: usize, order: usize) {
-        if order >= MAX_ORDER || !self.is_valid_address(addr) {
+        if order > MAX_ORDER || !self.is_valid_address(addr) {
+            return;
+        }
+
+        // If we're at MAX_ORDER, we can't coalesce further
+        if order == MAX_ORDER {
+            self.add_free_block(addr, order);
             return;
         }
 
@@ -304,7 +320,8 @@ impl BuddyAllocator {
 
             addr as *mut u8
         } else {
-            // Allocation failed - increment failure counter
+            // Store the failed size in bytes_allocated temporarily for retrieval outside lock
+            self.stats.bytes_allocated = size;
             self.stats.failed_allocations += 1;
             ptr::null_mut()
         }
@@ -369,7 +386,14 @@ impl LockedAllocator {
 
 unsafe impl GlobalAlloc for LockedAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.inner.lock().alloc(layout)
+        let result = self.inner.lock().alloc(layout);
+        if result.is_null() {
+            // Get the failed size that was stored
+            let failed_size = self.inner.lock().stats.bytes_allocated;
+            crate::kprintln!("[ALLOC ERROR] Failed to allocate {} bytes (align {})", 
+                failed_size, layout.align());
+        }
+        result
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
