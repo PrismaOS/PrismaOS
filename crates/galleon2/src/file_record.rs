@@ -413,23 +413,31 @@ impl FileRecordManager {
         // Add Standard Information attribute
         kprintln!("[FileRecord] Creating StandardInformation...");
         let std_info = StandardInformation::new_directory();
+        kprintln!("[FileRecord] Serializing StandardInformation...");
         let std_info_data = std_info.serialize();
+        kprintln!("[FileRecord] Creating StandardInformation attribute...");
         let std_info_attr = Attribute::new_resident(AttributeType::StandardInformation, std_info_data);
+        kprintln!("[FileRecord] Adding StandardInformation attribute...");
         record.add_attribute(std_info_attr);
         kprintln!("[FileRecord] StandardInformation added");
 
         // Add File Name attribute
         kprintln!("[FileRecord] Creating FileName...");
         let file_name = FileName::new(parent_directory, name.clone(), true);
+        kprintln!("[FileRecord] Serializing FileName...");
         let file_name_data = file_name.serialize();
+        kprintln!("[FileRecord] Creating FileName attribute...");
         let file_name_attr = Attribute::new_resident(AttributeType::FileName, file_name_data);
+        kprintln!("[FileRecord] Adding FileName attribute...");
         record.add_attribute(file_name_attr);
         kprintln!("[FileRecord] FileName added");
 
         // Add Index Root attribute for directory entries
         kprintln!("[FileRecord] Creating IndexRoot...");
         let index_root_data = create_empty_index_root();
+        kprintln!("[FileRecord] Creating IndexRoot attribute...");
         let index_root_attr = Attribute::new_resident(AttributeType::IndexRoot, index_root_data);
+        kprintln!("[FileRecord] Adding IndexRoot attribute...");
         record.add_attribute(index_root_attr);
         kprintln!("[FileRecord] IndexRoot added");
         
