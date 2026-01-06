@@ -185,7 +185,7 @@ impl MftRecord {
         self.header.bytes_in_use = total;
     }
 
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> [u8; MFT_RECORD_SIZE] {
         let mut data = AlignedRecordBuf::new();
         let mut offset = 0;
 
@@ -228,17 +228,8 @@ impl MftRecord {
         // End marker
         data.buf[offset..offset+4].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
 
-        // Allocate with 4096-byte alignment
-        use alloc::alloc::{alloc, Layout};
-        let layout = Layout::from_size_align(MFT_RECORD_SIZE, 4096).unwrap();
-        unsafe {
-            let ptr = alloc(layout);
-            if ptr.is_null() {
-                panic!("Failed to allocate MFT record buffer");
-            }
-            core::ptr::copy_nonoverlapping(data.buf.as_ptr(), ptr, MFT_RECORD_SIZE);
-            Vec::from_raw_parts(ptr, MFT_RECORD_SIZE, MFT_RECORD_SIZE)
-        }
+        // Return the stack-allocated buffer (no heap allocation)
+        data.buf
     }
 
     pub fn deserialize(data: &[u8], record_number: FileRecordNumber) -> FilesystemResult<Self> {
@@ -411,62 +402,83 @@ impl Attribute {
         self.header.length
     }
 
-    pub fn serialize(&self) -> Vec<u8> {
-        // Pre-allocate with estimated size and 4096-byte alignment
-        use alloc::alloc::{alloc, Layout};
-        let estimated_size = 256; // Conservative estimate for attribute header + data
-        let layout = Layout::from_size_align(estimated_size, 4096).unwrap();
+    pub fn serialize(&self) -> &[u8] {
+        // Use a static thread-local buffer to avoid heap allocation
+        #[repr(align(8))]
+        struct AttrBuf {
+            buf: [u8; 512],
+        }
 
-        let mut data = unsafe {
-            let ptr = alloc(layout);
-            if ptr.is_null() {
-                panic!("Failed to allocate attribute buffer");
-            }
-            Vec::from_raw_parts(ptr, 0, estimated_size)
-        };
+        static mut ATTR_BUFFER: AttrBuf = AttrBuf { buf: [0u8; 512] };
 
-        // Serialize header
-        data.extend_from_slice(&self.header.attr_type.to_le_bytes());
-        data.extend_from_slice(&self.header.length.to_le_bytes());
-        data.push(if self.header.non_resident { 1 } else { 0 });
-        data.push(self.header.name_length);
-        data.extend_from_slice(&self.header.name_offset.to_le_bytes());
-        data.extend_from_slice(&self.header.flags.to_le_bytes());
-        data.extend_from_slice(&self.header.attribute_id.to_le_bytes());
+        unsafe {
+            let mut offset = 0;
+            let buf = &mut *core::ptr::addr_of_mut!(ATTR_BUFFER.buf);
 
-        match &self.data {
-            AttributeData::Resident(content) => {
-                data.extend_from_slice(&(content.len() as u32).to_le_bytes());
-                data.extend_from_slice(&24u16.to_le_bytes()); // Data offset
-                data.extend_from_slice(&0u16.to_le_bytes()); // Padding
-                data.extend_from_slice(content);
-            }
-            AttributeData::NonResident { runs, allocated_size, real_size, initialized_size } => {
-                data.extend_from_slice(&0u64.to_le_bytes()); // Starting VCN
-                data.extend_from_slice(&0u64.to_le_bytes()); // Ending VCN
-                data.extend_from_slice(&40u16.to_le_bytes()); // Run list offset
-                data.extend_from_slice(&0u16.to_le_bytes()); // Compression unit
-                data.extend_from_slice(&0u32.to_le_bytes()); // Padding
-                data.extend_from_slice(&allocated_size.to_le_bytes());
-                data.extend_from_slice(&real_size.to_le_bytes());
-                data.extend_from_slice(&initialized_size.to_le_bytes());
+            // Serialize header
+            buf[offset..offset+4].copy_from_slice(&self.header.attr_type.to_le_bytes());
+            offset += 4;
+            buf[offset..offset+4].copy_from_slice(&self.header.length.to_le_bytes());
+            offset += 4;
+            buf[offset] = if self.header.non_resident { 1 } else { 0 };
+            offset += 1;
+            buf[offset] = self.header.name_length;
+            offset += 1;
+            buf[offset..offset+2].copy_from_slice(&self.header.name_offset.to_le_bytes());
+            offset += 2;
+            buf[offset..offset+2].copy_from_slice(&self.header.flags.to_le_bytes());
+            offset += 2;
+            buf[offset..offset+2].copy_from_slice(&self.header.attribute_id.to_le_bytes());
+            offset += 2;
 
-                // Serialize run list
-                for run in runs {
-                    // Simplified run encoding
-                    data.extend_from_slice(&run.cluster_count.to_le_bytes());
-                    data.extend_from_slice(&run.start_cluster.to_le_bytes());
+            match &self.data {
+                AttributeData::Resident(content) => {
+                    buf[offset..offset+4].copy_from_slice(&(content.len() as u32).to_le_bytes());
+                    offset += 4;
+                    buf[offset..offset+2].copy_from_slice(&24u16.to_le_bytes());
+                    offset += 2;
+                    buf[offset..offset+2].copy_from_slice(&0u16.to_le_bytes());
+                    offset += 2;
+                    buf[offset..offset+content.len()].copy_from_slice(content);
+                    offset += content.len();
                 }
-                data.push(0); // End of runs
+                AttributeData::NonResident { runs, allocated_size, real_size, initialized_size } => {
+                    buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
+                    offset += 8;
+                    buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
+                    offset += 8;
+                    buf[offset..offset+2].copy_from_slice(&40u16.to_le_bytes());
+                    offset += 2;
+                    buf[offset..offset+2].copy_from_slice(&0u16.to_le_bytes());
+                    offset += 2;
+                    buf[offset..offset+4].copy_from_slice(&0u32.to_le_bytes());
+                    offset += 4;
+                    buf[offset..offset+8].copy_from_slice(&allocated_size.to_le_bytes());
+                    offset += 8;
+                    buf[offset..offset+8].copy_from_slice(&real_size.to_le_bytes());
+                    offset += 8;
+                    buf[offset..offset+8].copy_from_slice(&initialized_size.to_le_bytes());
+                    offset += 8;
+
+                    for run in runs {
+                        buf[offset..offset+8].copy_from_slice(&run.cluster_count.to_le_bytes());
+                        offset += 8;
+                        buf[offset..offset+8].copy_from_slice(&run.start_cluster.to_le_bytes());
+                        offset += 8;
+                    }
+                    buf[offset] = 0;
+                    offset += 1;
+                }
             }
-        }
 
-        // Pad to 8-byte boundary
-        while data.len() % 8 != 0 {
-            data.push(0);
-        }
+            // Pad to 8-byte boundary
+            while offset % 8 != 0 {
+                buf[offset] = 0;
+                offset += 1;
+            }
 
-        data
+            &buf[..offset]
+        }
     }
 
     pub fn deserialize(data: &[u8]) -> FilesystemResult<Self> {
@@ -508,23 +520,8 @@ impl Attribute {
             let content_size = u32::from_le_bytes(data[16..20].try_into().unwrap());
             let data_offset = u16::from_le_bytes(data[20..22].try_into().unwrap()) as usize;
 
-            // Allocate with 4096-byte alignment using Layout
-            use alloc::alloc::{alloc, Layout};
-            let layout = Layout::from_size_align(content_size as usize, 4096)
-                .map_err(|_| FilesystemError::InvalidParameter)?;
-
-            let content = unsafe {
-                let ptr = alloc(layout);
-                if ptr.is_null() {
-                    return Err(FilesystemError::InsufficientSpace);
-                }
-                core::ptr::copy_nonoverlapping(
-                    data[data_offset..].as_ptr(),
-                    ptr,
-                    content_size as usize
-                );
-                Vec::from_raw_parts(ptr, content_size as usize, content_size as usize)
-            };
+            // Copy the content data directly to a Vec
+            let content = data[data_offset..data_offset + content_size as usize].to_vec();
 
             AttributeData::Resident(content)
         };

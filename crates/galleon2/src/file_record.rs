@@ -376,7 +376,7 @@ impl FileRecordManager {
                 OperationType::CreateFile,
                 file_record_number,
                 Vec::new(), // No undo data for create
-                record.serialize(),
+                record.serialize().to_vec(),
             )?;
         }
 
@@ -427,7 +427,7 @@ impl FileRecordManager {
             OperationType::CreateDirectory,
             dir_record_number,
             Vec::new(),
-            record.serialize(),
+            record.serialize().to_vec(),
         )?;
 
         // Write the record
@@ -469,7 +469,7 @@ impl FileRecordManager {
         let transaction_id = self.journal_manager.begin_transaction();
 
         let mut record = self.mft_manager.read_record(file_record_number)?;
-        let old_record_data = record.serialize();
+        let old_record_data = record.serialize().to_vec();
 
         // Find and update the data attribute
         for attr in &mut record.attributes {
@@ -499,7 +499,7 @@ impl FileRecordManager {
             OperationType::WriteData,
             file_record_number,
             old_record_data,
-            record.serialize(),
+            record.serialize().to_vec(),
         )?;
 
         // Write the updated record
@@ -549,7 +549,7 @@ impl FileRecordManager {
         let transaction_id = self.journal_manager.begin_transaction();
 
         let record = self.mft_manager.read_record(file_record_number)?;
-        let old_record_data = record.serialize();
+        let old_record_data = record.serialize().to_vec();
 
         // Mark record as not in use
         let mut new_record = record.clone();
@@ -563,7 +563,7 @@ impl FileRecordManager {
             OperationType::DeleteFile,
             file_record_number,
             old_record_data, // For recovery
-            new_record.serialize(),
+            new_record.serialize().to_vec(),
         )?;
 
         // Write the updated record

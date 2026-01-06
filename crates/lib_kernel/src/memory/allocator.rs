@@ -11,7 +11,7 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 // Kernel heap configuration
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize =128 * 1024 * 1024; // 128 MiB - kernel heap size
+pub const HEAP_SIZE: usize = 256 * 1024 * 1024; // 256 MiB - kernel heap size
 
 // Small bootstrap heap for early allocations before we set up virtual memory
 #[repr(C, align(16))]
