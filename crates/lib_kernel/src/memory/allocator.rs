@@ -11,18 +11,20 @@ static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 // Kernel heap configuration
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize =128 * 1024 * 1024; // 96 MiB - kernel heap size
+pub const HEAP_SIZE: usize =128 * 1024 * 1024; // 128 MiB - kernel heap size
 
 // Small bootstrap heap for early allocations before we set up virtual memory
-#[repr(align(16))]
-struct BootstrapHeap([u8; 64 * 1024]); // 64KB bootstrap heap
+#[repr(C, align(16))]
+struct BootstrapHeap {
+    data: [u8; 64 * 1024], // 64KB bootstrap heap
+}
 
-static mut BOOTSTRAP_HEAP: BootstrapHeap = BootstrapHeap([0; 64 * 1024]); // 64KB bootstrap heap
+static mut BOOTSTRAP_HEAP: BootstrapHeap = BootstrapHeap { data: [0; 64 * 1024] };
 static mut BOOTSTRAP_ACTIVE: bool = false;
 
 /// Initialize bootstrap heap for early kernel allocations
 pub unsafe fn init_bootstrap_heap() {
-    ALLOCATOR.lock().init(BOOTSTRAP_HEAP.0.as_mut_ptr(), 64 * 1024);
+    ALLOCATOR.lock().init(BOOTSTRAP_HEAP.data.as_mut_ptr(), 64 * 1024);
     BOOTSTRAP_ACTIVE = true;
 }
 

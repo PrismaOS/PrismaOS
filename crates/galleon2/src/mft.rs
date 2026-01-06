@@ -228,7 +228,17 @@ impl MftRecord {
         // End marker
         data.buf[offset..offset+4].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
 
-        data.buf.to_vec()
+        // Allocate with 4096-byte alignment
+        use alloc::alloc::{alloc, Layout};
+        let layout = Layout::from_size_align(MFT_RECORD_SIZE, 4096).unwrap();
+        unsafe {
+            let ptr = alloc(layout);
+            if ptr.is_null() {
+                panic!("Failed to allocate MFT record buffer");
+            }
+            core::ptr::copy_nonoverlapping(data.buf.as_ptr(), ptr, MFT_RECORD_SIZE);
+            Vec::from_raw_parts(ptr, MFT_RECORD_SIZE, MFT_RECORD_SIZE)
+        }
     }
 
     pub fn deserialize(data: &[u8], record_number: FileRecordNumber) -> FilesystemResult<Self> {
@@ -402,7 +412,18 @@ impl Attribute {
     }
 
     pub fn serialize(&self) -> Vec<u8> {
-        let mut data = Vec::new();
+        // Pre-allocate with estimated size and 4096-byte alignment
+        use alloc::alloc::{alloc, Layout};
+        let estimated_size = 256; // Conservative estimate for attribute header + data
+        let layout = Layout::from_size_align(estimated_size, 4096).unwrap();
+
+        let mut data = unsafe {
+            let ptr = alloc(layout);
+            if ptr.is_null() {
+                panic!("Failed to allocate attribute buffer");
+            }
+            Vec::from_raw_parts(ptr, 0, estimated_size)
+        };
 
         // Serialize header
         data.extend_from_slice(&self.header.attr_type.to_le_bytes());
@@ -486,7 +507,25 @@ impl Attribute {
         } else {
             let content_size = u32::from_le_bytes(data[16..20].try_into().unwrap());
             let data_offset = u16::from_le_bytes(data[20..22].try_into().unwrap()) as usize;
-            let content = data[data_offset..data_offset + content_size as usize].to_vec();
+
+            // Allocate with 4096-byte alignment using Layout
+            use alloc::alloc::{alloc, Layout};
+            let layout = Layout::from_size_align(content_size as usize, 4096)
+                .map_err(|_| FilesystemError::InvalidParameter)?;
+
+            let content = unsafe {
+                let ptr = alloc(layout);
+                if ptr.is_null() {
+                    return Err(FilesystemError::InsufficientSpace);
+                }
+                core::ptr::copy_nonoverlapping(
+                    data[data_offset..].as_ptr(),
+                    ptr,
+                    content_size as usize
+                );
+                Vec::from_raw_parts(ptr, content_size as usize, content_size as usize)
+            };
+
             AttributeData::Resident(content)
         };
 

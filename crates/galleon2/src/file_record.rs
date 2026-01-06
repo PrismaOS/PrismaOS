@@ -451,9 +451,9 @@ impl FileRecordManager {
                         self.update_access_time(file_record_number)?;
                         return Ok(data.clone());
                     }
-                    AttributeData::NonResident { runs, real_size, .. } => {
-                        // Read data from clusters (simplified)
-                        let mut file_data = vec![0u8; *real_size as usize];
+                    AttributeData::NonResident { runs: _runs, real_size, .. } => {
+                        // Allocate directly to avoid double allocation
+                        let file_data = vec![0u8; *real_size as usize];
                         // Would read from clusters specified in runs
                         self.update_access_time(file_record_number)?;
                         return Ok(file_data);

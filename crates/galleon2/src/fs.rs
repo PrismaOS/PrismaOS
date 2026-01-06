@@ -6,10 +6,16 @@ use crate::{
     write_super_block, FilesystemError, FilesystemResult
 };
 
+
+#[repr(align(4096))]
+struct AlignedZeroBuf {
+    buf: [u8; 50 * 512],
+}
+
 pub fn zero_out_sectors(drive: u8, start_sector: u64, sector_count: u8) -> IdeResult<()> {
-    // Create buffer for 50 sectors (50 * 512 = 25,600 bytes)
-    let zero_buf = [0u8; 50 * 512];
-    let res = ide_write_sectors(drive, sector_count, start_sector as u32, &zero_buf);
+    // Use a 4096-aligned buffer for 50 sectors (50 * 512 = 25,600 bytes)
+    let zero_buf = AlignedZeroBuf { buf: [0u8; 50 * 512] };
+    let res = ide_write_sectors(drive, sector_count, start_sector as u32, &zero_buf.buf);
     match &res {
         Ok(_) => {},
         Err(e) => kprintln!("Failed to zero {} sectors starting at sector {} on drive {}: {:?}", sector_count, start_sector, drive, e),

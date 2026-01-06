@@ -25,8 +25,8 @@ pub struct GalleonSuperBlock {
     pub journal_size_clusters: u64,
     pub bitmap_start_cluster: u64,
     pub bitmap_size_clusters: u64,
-    pub cluster_size: u32,
     pub index_allocation_start: u64,
+    pub cluster_size: u32,
 }
 
 impl GalleonSuperBlock {
@@ -313,13 +313,13 @@ impl GalleonSuperBlock {
 
 /// Complete Galleon Filesystem
 pub struct GalleonFilesystem {
-    drive: u8,
     super_block: GalleonSuperBlock,
     mft_manager: MftManager,
     journal_manager: JournalManager,
     file_manager: FileRecordManager,
     btree_manager: BTreeManager,
     allocator: ClusterAllocator,
+    drive: u8,
 }
 
 impl GalleonFilesystem {
