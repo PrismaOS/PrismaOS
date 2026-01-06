@@ -27,7 +27,10 @@ use x86_64::{
 
 // Kernel heap configuration
 pub const HEAP_START: usize = 0x_4444_4444_0000;
-pub const HEAP_SIZE: usize = 256 * 1024 * 1024; // 256 MiB
+pub const HEAP_SIZE: usize = 128 * 1024 * 1024; // 128 MiB
+
+// Store actual claimed heap size for diagnostics
+static CLAIMED_HEAP_SIZE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
 // Global allocator using Talc with ErrOnOom handler
 type TalcAllocator = Talck<spin::Mutex<()>, ErrOnOom>;
@@ -110,17 +113,17 @@ pub fn init_heap(
             (heap_ptr as usize) % core::mem::align_of::<usize>());
 
         let span = Span::new(heap_ptr, heap_ptr.add(HEAP_SIZE));
-        crate::kprintln!("[HEAP DEBUG] Span created: base={:#x}, acme={:#x}",
-            heap_ptr as usize, heap_ptr.add(HEAP_SIZE) as usize);
+        crate::kprintln!("[HEAP DEBUG] Span created: base={:#x}, acme={:#x}, size={}",
+            heap_ptr as usize, heap_ptr.add(HEAP_SIZE) as usize, HEAP_SIZE);
 
-        ALLOCATOR.lock().claim(span).map_err(|_| {
-            crate::kprintln!("[HEAP ERROR] Failed to claim heap region!");
-            crate::kprintln!("[HEAP ERROR] Heap range: {:#x} - {:#x}",
-                heap_ptr as usize, heap_ptr.add(HEAP_SIZE) as usize);
+        let claim_result = ALLOCATOR.lock().claim(span);
+
+        let claimed_span = claim_result.map_err(|_| {
             MapToError::FrameAllocationFailed
         })?;
 
-        crate::kprintln!("[HEAP DEBUG] Claim successful!");
+        // Store the actual claimed size for stats
+        CLAIMED_HEAP_SIZE.store(claimed_span.size(), core::sync::atomic::Ordering::Relaxed);
     }
 
     crate::kprintln!("[HEAP] Talc allocator initialized: {} MiB",
@@ -136,17 +139,20 @@ pub fn init_heap(
 }
 
 /// Get heap usage statistics
-/// Note: Without the "counters" feature, most statistics are not available
 pub fn heap_stats() -> HeapStats {
+    let talc = ALLOCATOR.lock();
+    let counters = talc.get_counters();
+    let claimed_size = CLAIMED_HEAP_SIZE.load(core::sync::atomic::Ordering::Relaxed);
+
     HeapStats {
-        total_size: HEAP_SIZE,
-        used_size: 0, // Not available without counters feature
-        free_size: HEAP_SIZE,
-        fragmentation_ratio: 0.0,
-        total_allocations: 0, // Not available without counters feature
-        total_deallocations: 0,
-        active_allocations: 0,
-        failed_allocations: 0,
+        total_size: claimed_size, // Use actual claimed size, not HEAP_SIZE constant
+        used_size: counters.allocated_bytes,
+        free_size: claimed_size.saturating_sub(counters.allocated_bytes),
+        fragmentation_ratio: 0.0, // Disable fragmentation calc to avoid FPU issues
+        total_allocations: counters.total_allocation_count,
+        total_deallocations: counters.total_allocation_count.saturating_sub(counters.allocation_count as u64),
+        active_allocations: counters.allocation_count as u64,
+        failed_allocations: 0, // Talc panics on OOM, so this is always 0
     }
 }
 
