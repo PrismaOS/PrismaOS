@@ -4,6 +4,7 @@
 //! Uses cluster bitmaps and allocation strategies for optimal performance.
 
 use alloc::{vec, vec::Vec, collections::BTreeMap};
+use lib_kernel::kprintln;
 use crate::{FilesystemResult, FilesystemError, ide_read_sectors, ide_write_sectors};
 
 pub const CLUSTER_SIZE: u32 = 4096; // 4KB clusters
@@ -199,17 +200,36 @@ impl ClusterBitmap {
     }
 
     pub fn load_bitmap(&mut self) -> FilesystemResult<()> {
+        kprintln!("Loading cluster bitmap from drive {}", self.drive);
         if self.cached_bitmap.is_none() {
-            let mut bitmap_data = vec![0u8; (self.bitmap_size_sectors * 512) as usize];
-            ide_read_sectors(
-                self.drive,
-                self.bitmap_size_sectors as u8,
-                self.bitmap_start_sector as u32,
-                &mut bitmap_data,
-            )?;
+            // Allocate bitmap in smaller chunks to avoid early allocator failures
+            // Read 2 sectors (1KB) at a time to keep allocations very small
+            const CHUNK_SIZE_SECTORS: u64 = 2;
+            let mut bitmap_data = Vec::new(); // Don't pre-allocate to avoid large allocation
+            
+            kprintln!("Reading {} sectors starting at sector {} for bitmap", 
+                self.bitmap_size_sectors, self.bitmap_start_sector);
+            
+            let mut sectors_read = 0u64;
+            while sectors_read < self.bitmap_size_sectors {
+                let sectors_to_read = CHUNK_SIZE_SECTORS.min(self.bitmap_size_sectors - sectors_read);
+                let mut chunk = vec![0u8; (sectors_to_read * 512) as usize];
+                
+                ide_read_sectors(
+                    self.drive,
+                    sectors_to_read as u8,
+                    (self.bitmap_start_sector + sectors_read) as u32,
+                    &mut chunk,
+                )?;
+                
+                bitmap_data.extend_from_slice(&chunk);
+                sectors_read += sectors_to_read;
+            }
+            
             self.cached_bitmap = Some(bitmap_data);
             self.dirty = false;
         }
+        kprintln!("Cluster bitmap loaded successfully");
         Ok(())
     }
 

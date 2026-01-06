@@ -14,7 +14,7 @@ pub const HEAP_SIZE: usize = 256 * 1024 * 1024; // 256 MiB
 
 // Buddy allocator configuration
 const MIN_BLOCK_SIZE: usize = 32; // Minimum allocation size (must fit BlockHeader)
-const MAX_ORDER: usize = 24; // 2^24 = 16 MiB max single allocation
+const MAX_ORDER: usize = 26; // 2^26 = 64 MiB max single allocation
 const MIN_ORDER: usize = 5; // 2^5 = 32 bytes min allocation
 
 // Block header stored at the beginning of each free block
@@ -95,13 +95,16 @@ impl BuddyAllocator {
         // This builds the free list from the entire heap
         let mut current_addr = heap_start as usize;
         let end_addr = current_addr + heap_size;
+        let mut blocks_added = 0;
+        let mut blocks_per_order = [0usize; MAX_ORDER + 1];
 
         while current_addr < end_addr {
             // Find the largest block we can create at this address
             let remaining = end_addr - current_addr;
-            let mut order = MAX_ORDER;
+            let mut order = MAX_ORDER; // Use full MAX_ORDER
 
             // Find the largest properly-aligned block that fits
+            let mut added = false;
             while order >= MIN_ORDER {
                 let block_size = 1 << order;
 
@@ -109,6 +112,9 @@ impl BuddyAllocator {
                 if block_size <= remaining && (current_addr & (block_size - 1)) == 0 {
                     self.add_free_block(current_addr, order);
                     current_addr += block_size;
+                    blocks_added += 1;
+                    blocks_per_order[order] += 1;
+                    added = true;
                     break;
                 }
 
@@ -116,13 +122,21 @@ impl BuddyAllocator {
             }
 
             // If we couldn't add any block, we're done
-            if order < MIN_ORDER {
+            if !added {
                 break;
             }
         }
 
         // Reset statistics
         self.stats = AllocatorStats::new();
+        
+        crate::kprintln!("[HEAP] Added {} free blocks during initialization", blocks_added);
+        for order in MIN_ORDER..=MAX_ORDER {
+            if blocks_per_order[order] > 0 {
+                crate::kprintln!("[HEAP]   Order {} ({}KB): {} blocks", 
+                    order, (1 << order) / 1024, blocks_per_order[order]);
+            }
+        }
     }
 
     /// Convert size to order (log2 rounded up)
@@ -201,6 +215,7 @@ impl BuddyAllocator {
     /// Allocate a block of the given order
     unsafe fn allocate_order(&mut self, order: usize) -> Option<usize> {
         if order > MAX_ORDER {
+            crate::kprintln!("[ALLOC] Order {} exceeds MAX_ORDER {}", order, MAX_ORDER);
             self.stats.failed_allocations += 1;
             return None;
         }
@@ -221,7 +236,8 @@ impl BuddyAllocator {
             }
         }
 
-        // Out of memory
+        // Out of memory - log which order failed
+        crate::kprintln!("[ALLOC] Failed to allocate order {} (size: {} bytes)", order, 1 << order);
         self.stats.failed_allocations += 1;
         None
     }
@@ -362,11 +378,12 @@ static mut BOOTSTRAP_ACTIVE: bool = false;
 
 /// Initialize bootstrap heap for early kernel allocations
 pub unsafe fn init_bootstrap_heap() {
-    ALLOCATOR.init(
+    ALLOCATOR.inner.lock().init(
         core::ptr::addr_of_mut!(BOOTSTRAP_HEAP.data).cast(),
         64 * 1024
     );
     BOOTSTRAP_ACTIVE = true;
+    crate::kprintln!("[HEAP] Bootstrap heap initialized (64KB)");
 }
 
 /// Initialize the main kernel heap with proper virtual memory mapping
@@ -414,8 +431,10 @@ pub fn init_heap(
     crate::kprintln!("[HEAP] Successfully allocated all {} pages", allocated_pages);
 
     // Switch from bootstrap heap to main heap
+    crate::kprintln!("[HEAP] Switching from bootstrap heap to main heap...");
     unsafe {
-        ALLOCATOR.init(HEAP_START as *mut u8, HEAP_SIZE);
+        // Must hold lock while initializing to ensure atomicity
+        ALLOCATOR.inner.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
         BOOTSTRAP_ACTIVE = false;
     }
 

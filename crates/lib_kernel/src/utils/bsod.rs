@@ -146,7 +146,7 @@ pub unsafe fn render_framebuffer_bsod(renderer: &mut scrolling_text::ScrollingTe
 
     renderer.write_line(b"");
     renderer.write_line(b"=================================");
-    renderer.write_line(b"    KERNEL PANIC");
+    renderer.write_line(b"          KERNEL PANIC");
     renderer.write_line(b"=================================");
     renderer.write_line(b"");
 
