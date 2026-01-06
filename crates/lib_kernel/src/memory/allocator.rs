@@ -83,25 +83,32 @@ impl BuddyAllocator {
 
     /// Initialize the allocator with a memory region
     unsafe fn init(&mut self, heap_start: *mut u8, heap_size: usize) {
-        self.heap_start = heap_start as usize;
-        self.heap_size = heap_size;
+        // CRITICAL: Store these values FIRST
+        let new_start = heap_start as usize;
+        let new_size = heap_size;
+        
+        self.heap_start = new_start;
+        self.heap_size = new_size;
 
         // Clear all free lists
         for list in &mut self.free_lists {
             *list = None;
         }
 
+        // IMPORTANT: Reset statistics when reinitializing
+        // This prevents corruption from previous heap allocations
+        self.stats = AllocatorStats::new();
+
         // Add free blocks in descending order size, ensuring proper alignment
         // This builds the free list from the entire heap
-        let mut current_addr = heap_start as usize;
-        let end_addr = current_addr + heap_size;
+        let mut current_addr = new_start;
+        let end_addr = new_start + new_size;
         let mut blocks_added = 0;
-        let mut blocks_per_order = [0usize; MAX_ORDER + 1];
 
         while current_addr < end_addr {
             // Find the largest block we can create at this address
             let remaining = end_addr - current_addr;
-            let mut order = MAX_ORDER; // Use full MAX_ORDER
+            let mut order = MAX_ORDER;
 
             // Find the largest properly-aligned block that fits
             let mut added = false;
@@ -110,33 +117,27 @@ impl BuddyAllocator {
 
                 // Check if block fits and address is properly aligned for this order
                 if block_size <= remaining && (current_addr & (block_size - 1)) == 0 {
-                    self.add_free_block(current_addr, order);
-                    current_addr += block_size;
-                    blocks_added += 1;
-                    blocks_per_order[order] += 1;
-                    added = true;
-                    break;
+                    if self.add_free_block(current_addr, order) {
+                        current_addr += block_size;
+                        blocks_added += 1;
+                        added = true;
+                        break;
+                    }
+                    // If add failed, try smaller block size
                 }
 
                 order -= 1;
             }
 
-            // If we couldn't add any block, we're done
+            // If we couldn't add any block at this address, skip minimum amount
             if !added {
-                break;
+                current_addr += MIN_BLOCK_SIZE;
             }
         }
-
-        // Reset statistics
-        self.stats = AllocatorStats::new();
         
-        crate::kprintln!("[HEAP] Added {} free blocks during initialization", blocks_added);
-        for order in MIN_ORDER..=MAX_ORDER {
-            if blocks_per_order[order] > 0 {
-                crate::kprintln!("[HEAP]   Order {} ({}KB): {} blocks", 
-                    order, (1 << order) / 1024, blocks_per_order[order]);
-            }
-        }
+        // Store blocks_added in stats for reporting outside the lock
+        // Reuse failed_allocations temporarily as a communication channel
+        self.stats.failed_allocations = blocks_added as u64;
     }
 
     /// Convert size to order (log2 rounded up)
@@ -165,12 +166,21 @@ impl BuddyAllocator {
     }
 
     /// Add a free block to the appropriate free list
-    unsafe fn add_free_block(&mut self, addr: usize, order: usize) {
-        if order > MAX_ORDER || !self.is_valid_address(addr) {
-            return;
+    unsafe fn add_free_block(&mut self, addr: usize, order: usize) -> bool {
+        if order > MAX_ORDER {
+            return false;
+        }
+        
+        if !self.is_valid_address(addr) {
+            return false;
         }
 
+        // Try to write to the address to ensure it's mapped and writable
         let header = addr as *mut BlockHeader;
+        
+        // Initialize the block header
+        core::ptr::write(header, BlockHeader::new());
+        
         (*header).next = self.free_lists[order];
         (*header).prev = None;
 
@@ -179,6 +189,7 @@ impl BuddyAllocator {
         }
 
         self.free_lists[order] = NonNull::new(header);
+        true
     }
 
     /// Remove a specific block from its free list
@@ -293,6 +304,23 @@ impl BuddyAllocator {
 
             addr as *mut u8
         } else {
+            // DIAGNOSTIC: Print heap state right before failing
+            crate::kprintln!("=== ALLOCATION FAILURE DIAGNOSTIC ===");
+            crate::kprintln!("Requested: {} bytes (order {})", size, order);
+            crate::kprintln!("Heap: {:#x} - {:#x} ({} bytes)", 
+                self.heap_start, self.heap_start + self.heap_size, self.heap_size);
+            crate::kprintln!("Free blocks per order:");
+            for o in MIN_ORDER..=MAX_ORDER {
+                let mut count = 0;
+                let mut current = self.free_lists[o];
+                while let Some(block) = current {
+                    count += 1;
+                    current = block.as_ref().next;
+                }
+                if count > 0 {
+                    crate::kprintln!("  Order {} ({}KB): {} blocks", o, (1 << o) / 1024, count);
+                }
+            }
             ptr::null_mut()
         }
     }
@@ -376,14 +404,18 @@ struct BootstrapHeap {
 static mut BOOTSTRAP_HEAP: BootstrapHeap = BootstrapHeap { data: [0; 64 * 1024] };
 static mut BOOTSTRAP_ACTIVE: bool = false;
 
-/// Initialize bootstrap heap for early kernel allocations
+/// Initialize bootstrap heap for early kernel allocations  
+/// Uses a static buffer that will later be included in the main heap
 pub unsafe fn init_bootstrap_heap() {
+    // Use the static bootstrap buffer temporarily
+    // This is in kernel data segment, so it's already mapped
     ALLOCATOR.inner.lock().init(
         core::ptr::addr_of_mut!(BOOTSTRAP_HEAP.data).cast(),
         64 * 1024
     );
     BOOTSTRAP_ACTIVE = true;
-    crate::kprintln!("[HEAP] Bootstrap heap initialized (64KB)");
+    crate::kprintln!("[HEAP] Bootstrap heap initialized at {:#x} (64KB)", 
+        core::ptr::addr_of!(BOOTSTRAP_HEAP.data) as usize);
 }
 
 /// Initialize the main kernel heap with proper virtual memory mapping
@@ -391,6 +423,8 @@ pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
 ) -> Result<(), MapToError<Size4KiB>> {
+    crate::kprintln!("[HEAP] ===== STARTING MAIN HEAP INIT =====");
+    
     let page_range = {
         let heap_start = VirtAddr::new(HEAP_START as u64);
         let heap_end = heap_start + HEAP_SIZE as u64 - 1u64;
@@ -430,14 +464,44 @@ pub fn init_heap(
 
     crate::kprintln!("[HEAP] Successfully allocated all {} pages", allocated_pages);
 
-    // Switch from bootstrap heap to main heap
-    crate::kprintln!("[HEAP] Switching from bootstrap heap to main heap...");
+    // Test write to verify pages are actually writable
+    crate::kprintln!("[HEAP] Testing heap write access...");
     unsafe {
-        // Must hold lock while initializing to ensure atomicity
-        ALLOCATOR.inner.lock().init(HEAP_START as *mut u8, HEAP_SIZE);
-        BOOTSTRAP_ACTIVE = false;
+        let test_ptr = HEAP_START as *mut u64;
+        core::ptr::write_volatile(test_ptr, 0xDEADBEEFCAFEBABE);
+        let readback = core::ptr::read_volatile(test_ptr);
+        if readback != 0xDEADBEEFCAFEBABE {
+            crate::kprintln!("[HEAP ERROR] Heap write test failed! Wrote 0xDEADBEEFCAFEBABE, read back {:#x}", readback);
+            return Err(MapToError::FrameAllocationFailed);
+        }
+        crate::kprintln!("[HEAP] Heap write test passed");
     }
 
+    // Initialize the main heap - this is the FIRST and ONLY heap initialization
+    crate::kprintln!("[HEAP] Initializing main heap at {:#x} with {} bytes", HEAP_START, HEAP_SIZE);
+    
+    let blocks_added = unsafe {
+        let mut allocator = ALLOCATOR.inner.lock();
+        
+        // Initialize with full heap (first and only init)
+        allocator.init(HEAP_START as *mut u8, HEAP_SIZE);
+        
+        // Get blocks_added from the temporary storage
+        let blocks = allocator.stats.failed_allocations;
+        
+        // Now reset failed_allocations to 0
+        allocator.stats.failed_allocations = 0;
+        
+        blocks
+    };
+    
+    crate::kprintln!("[HEAP] Added {} free blocks during initialization", blocks_added);
+    
+    if blocks_added == 0 {
+        crate::kprintln!("[HEAP ERROR] No free blocks were added! Heap initialization failed!");
+        return Err(MapToError::FrameAllocationFailed);
+    }
+    
     let block_count = ALLOCATOR.inner.lock().count_free_blocks();
     crate::kprintln!("[HEAP] Buddy allocator initialized: {} MiB, {} free blocks",
         HEAP_SIZE / (1024 * 1024), block_count);

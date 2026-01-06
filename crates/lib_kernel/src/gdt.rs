@@ -93,11 +93,11 @@ pub fn init() {
         load_tss(GDT.1.tss_selector);
     }
     
-    crate::kprintln!("    [INFO] GDT initialized");
-    crate::kprintln!("       Kernel CS: {:#x}", GDT.1.kernel_code_selector.0);
-    crate::kprintln!("       Kernel DS: {:#x}", GDT.1.kernel_data_selector.0);
-    crate::kprintln!("       User DS:   {:#x}", GDT.1.user_data_selector.0);
-    crate::kprintln!("       User CS:   {:#x}", GDT.1.user_code_selector.0);
+    // crate::kprintln!("    [INFO] GDT initialized");
+    // crate::kprintln!("       Kernel CS: {:#x}", GDT.1.kernel_code_selector.0);
+    // crate::kprintln!("       Kernel DS: {:#x}", GDT.1.kernel_data_selector.0);
+    // crate::kprintln!("       User DS:   {:#x}", GDT.1.user_data_selector.0);
+    // crate::kprintln!("       User CS:   {:#x}", GDT.1.user_code_selector.0);
 }
 
 /// Get the GDT selectors for SYSCALL/SYSRET setup
@@ -195,11 +195,11 @@ pub fn setup_syscall_msrs() {
         // Get selectors with corrected GDT layout
         let selectors = get_selectors();
         
-        crate::kprintln!("    Setting up SYSCALL MSRs:");
-        crate::kprintln!("       Kernel CS: {:#x}", selectors.kernel_code().0);
-        crate::kprintln!("       Kernel DS: {:#x}", selectors.kernel_data().0);
-        crate::kprintln!("       User DS:   {:#x}", selectors.user_data().0);
-        crate::kprintln!("       User CS:   {:#x}", selectors.user_code().0);
+        // crate::kprintln!("    Setting up SYSCALL MSRs:");
+        // crate::kprintln!("       Kernel CS: {:#x}", selectors.kernel_code().0);
+        // crate::kprintln!("       Kernel DS: {:#x}", selectors.kernel_data().0);
+        // crate::kprintln!("       User DS:   {:#x}", selectors.user_data().0);
+        // crate::kprintln!("       User CS:   {:#x}", selectors.user_code().0);
         
         // FIXED: Correct parameter order for Star::write
         // Star::write(cs_sysret, ss_sysret, cs_syscall, ss_syscall)
@@ -211,9 +211,9 @@ pub fn setup_syscall_msrs() {
         );
         
         if let Err(e) = result {
-            crate::kprintln!("    ❌ STAR MSR write failed: {:?}", e);
-            crate::kprintln!("    This indicates GDT layout doesn't meet SYSCALL requirements");
-            crate::kprintln!("    Expected: User CS = Kernel DS + 16, User DS = Kernel DS + 8");
+        //     crate::kprintln!("    ❌ STAR MSR write failed: {:?}", e);
+        //     crate::kprintln!("    This indicates GDT layout doesn't meet SYSCALL requirements");
+        //     crate::kprintln!("    Expected: User CS = Kernel DS + 16, User DS = Kernel DS + 8");
             return;
         }
 
@@ -224,5 +224,5 @@ pub fn setup_syscall_msrs() {
         SFMask::write(x86_64::registers::rflags::RFlags::INTERRUPT_FLAG);
     }
 
-    crate::kprintln!("    ✅ SYSCALL MSRs configured successfully");
+    // crate::kprintln!("    ✅ SYSCALL MSRs configured successfully");
 }

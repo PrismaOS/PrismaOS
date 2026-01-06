@@ -2,7 +2,6 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame, Pag
 use x86_64::registers::control::Cr2;
 use lazy_static::lazy_static;
 use crate::gdt;
-use crate::println;
 
 
 lazy_static! {
@@ -48,7 +47,7 @@ pub fn init_idt() {
 }
 
 extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
-    println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
+    //println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 extern "x86-interrupt" fn double_fault_handler(
@@ -60,16 +59,16 @@ extern "x86-interrupt" fn double_fault_handler(
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
     if is_user_mode {
-        println!("🚨 USERSPACE DOUBLE FAULT - Process will be terminated");
-        println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
-        println!("   Error: {:#x}", error_code);
-        println!("   → Kernel remains stable");
+        //println!("🚨 USERSPACE DOUBLE FAULT - Process will be terminated");
+        //println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
+        //println!("   Error: {:#x}", error_code);
+        //println!("   → Kernel remains stable");
         
         // In a real implementation: terminate process and continue
         // For now, we'll still halt but with better messaging
-        println!("   → Halting system (would normally just kill process)");
+        //println!("   → Halting system (would normally just kill process)");
     } else {
-        println!("💥 KERNEL DOUBLE FAULT - Critical system error");
+        //println!("💥 KERNEL DOUBLE FAULT - Critical system error");
     }
     
     panic!("DOUBLE FAULT\nRIP: {:#x}\nError: {:#x}", 
@@ -143,18 +142,18 @@ extern "x86-interrupt" fn page_fault_handler(
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
-    println!("🚨 PAGE FAULT:");
-    println!("   Address: {:#x}", fault_address.as_u64());
-    println!("   User Mode: {}", is_user_mode);
-    println!("   Caused by Write: {}", error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE));
-    println!("   Page Present: {}", error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION));
+    //println!("🚨 PAGE FAULT:");
+    //println!("   Address: {:#x}", fault_address.as_u64());
+    //println!("   User Mode: {}", is_user_mode);
+    //println!("   Caused by Write: {}", error_code.contains(PageFaultErrorCode::CAUSED_BY_WRITE));
+    //println!("   Page Present: {}", error_code.contains(PageFaultErrorCode::PROTECTION_VIOLATION));
     
     if is_user_mode {
-        println!("   → Userspace page fault - would terminate process");
-        println!("   → Kernel memory remains protected");
+        //println!("   → Userspace page fault - would terminate process");
+        //println!("   → Kernel memory remains protected");
         // In a real implementation: terminate process, don't panic kernel
     } else {
-        println!("   → Kernel page fault - this is a kernel bug!");
+        //println!("   → Kernel page fault - this is a kernel bug!");
     }
     
     panic!("Page fault at {:#x}", fault_address.as_u64());
@@ -168,17 +167,17 @@ extern "x86-interrupt" fn general_protection_fault_handler(
     let cs = stack_frame.code_segment;
     let is_user_mode = (cs.0 & 3) == 3; // Ring 3
     
-    println!("🚨 GENERAL PROTECTION FAULT:");
-    println!("   Error Code: {:#x}", error_code);
-    println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
-    println!("   User Mode: {}", is_user_mode);
+    //println!("🚨 GENERAL PROTECTION FAULT:");
+    //println!("   Error Code: {:#x}", error_code);
+    //println!("   RIP: {:#x}", stack_frame.instruction_pointer.as_u64());
+    //println!("   User Mode: {}", is_user_mode);
     
     if is_user_mode {
-        println!("   → Userspace privilege violation - would terminate process");
-        println!("   → Kernel remains protected");
+        //println!("   → Userspace privilege violation - would terminate process");
+        //println!("   → Kernel remains protected");
         // In a real implementation: terminate process, don't panic kernel
     } else {
-        println!("   → Kernel privilege violation - kernel bug!");
+        //println!("   → Kernel privilege violation - kernel bug!");
     }
     
     panic!("General protection fault with error code {:#x}", error_code);

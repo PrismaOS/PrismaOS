@@ -16,18 +16,14 @@ use lib_kernel::{
 };
 
 pub fn init_core_subsystems() {
-    // Bootstrap heap for early allocations
-    unsafe { memory::init_bootstrap_heap(); }
-    kprintln!("[OK] Bootstrap heap initialized (64KB)");
-
+    // Note: No heap needed yet - GDT/IDT/PICs use static structures
+    // Heap will be initialized after memory mapping is set up
+    
     // Initialize GDT and IDT
     gdt::init();
-    kprintln!("[OK] GDT initialized");
 
     interrupts::init_idt();
-    kprintln!("[OK] IDT initialized");
 
     // Initialize PICs
     unsafe { PICS.lock().initialize() };
-    kprintln!("[OK] PIC initialized (IRQ 32-47)");
 }
