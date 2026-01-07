@@ -129,6 +129,35 @@ unsafe extern "C" fn kmain() -> ! {
     //     core::arch::asm!("hlt");
     // }
 
+
+    // Vec test (heap alloc stress test) - Leak to keep in memory forever
+    kprintln!("Allocating permanent 50 MB test vector...");
+    let mut test_vec: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+    // Allocate 50 MB (1024 * 1024 * 50 bytes)
+    let size: usize = 1024 * 1024 * 50;
+    for i in 0..size {
+        test_vec.push((i % 256) as u8);
+    }
+    
+    // Verify the allocation
+    let mut success = true;
+    for i in 0..size {
+        if test_vec[i] != (i % 256) as u8 {
+            success = false;
+            kprintln!("Heap allocation test failed at index {}: expected {}, got {}", i, (i % 256) as u8, test_vec[i]);
+            break;
+        }
+    }
+    
+    if success {
+        kprintln!("✓ Heap allocation test passed for 50MB vector");
+        // Leak the vector so it persists forever in memory (never deallocated)
+        let _leaked_vec: &'static mut [u8] = alloc::boxed::Box::leak(test_vec.into_boxed_slice());
+        kprintln!("✓ Vector leaked - will persist in memory forever");
+    } else {
+        kprintln!("✗ Heap allocation test failed");
+    }
+
     kprintln!("Proceeding with Galleon2 filesystem initialization...");
 
     // Try to mount existing filesystem, or format a new one
@@ -167,6 +196,7 @@ unsafe extern "C" fn kmain() -> ! {
             }
         }
     };
+
 
     // Wrap all filesystem operations in error handling to prevent panics
     let filesystem_operations_result = (|| -> Result<(), galleon2::FilesystemError> {

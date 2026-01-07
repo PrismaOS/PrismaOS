@@ -402,83 +402,82 @@ impl Attribute {
         self.header.length
     }
 
-    pub fn serialize(&self) -> &[u8] {
-        // Use a static thread-local buffer to avoid heap allocation
-        #[repr(align(8))]
-        struct AttrBuf {
-            buf: [u8; 512],
-        }
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(512);
+        let mut offset = 0;
 
-        static mut ATTR_BUFFER: AttrBuf = AttrBuf { buf: [0u8; 512] };
+        // Reserve space and serialize header
+        buf.resize(16, 0);
+        buf[offset..offset+4].copy_from_slice(&self.header.attr_type.to_le_bytes());
+        offset += 4;
+        buf[offset..offset+4].copy_from_slice(&self.header.length.to_le_bytes());
+        offset += 4;
+        buf[offset] = if self.header.non_resident { 1 } else { 0 };
+        offset += 1;
+        buf[offset] = self.header.name_length;
+        offset += 1;
+        buf[offset..offset+2].copy_from_slice(&self.header.name_offset.to_le_bytes());
+        offset += 2;
+        buf[offset..offset+2].copy_from_slice(&self.header.flags.to_le_bytes());
+        offset += 2;
+        buf[offset..offset+2].copy_from_slice(&self.header.attribute_id.to_le_bytes());
+        offset += 2;
 
-        unsafe {
-            let mut offset = 0;
-            let buf = &mut *core::ptr::addr_of_mut!(ATTR_BUFFER.buf);
-
-            // Serialize header
-            buf[offset..offset+4].copy_from_slice(&self.header.attr_type.to_le_bytes());
-            offset += 4;
-            buf[offset..offset+4].copy_from_slice(&self.header.length.to_le_bytes());
-            offset += 4;
-            buf[offset] = if self.header.non_resident { 1 } else { 0 };
-            offset += 1;
-            buf[offset] = self.header.name_length;
-            offset += 1;
-            buf[offset..offset+2].copy_from_slice(&self.header.name_offset.to_le_bytes());
-            offset += 2;
-            buf[offset..offset+2].copy_from_slice(&self.header.flags.to_le_bytes());
-            offset += 2;
-            buf[offset..offset+2].copy_from_slice(&self.header.attribute_id.to_le_bytes());
-            offset += 2;
-
-            match &self.data {
-                AttributeData::Resident(content) => {
-                    buf[offset..offset+4].copy_from_slice(&(content.len() as u32).to_le_bytes());
-                    offset += 4;
-                    buf[offset..offset+2].copy_from_slice(&24u16.to_le_bytes());
-                    offset += 2;
-                    buf[offset..offset+2].copy_from_slice(&0u16.to_le_bytes());
-                    offset += 2;
-                    buf[offset..offset+content.len()].copy_from_slice(content);
-                    offset += content.len();
-                }
-                AttributeData::NonResident { runs, allocated_size, real_size, initialized_size } => {
-                    buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
-                    offset += 8;
-                    buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
-                    offset += 8;
-                    buf[offset..offset+2].copy_from_slice(&40u16.to_le_bytes());
-                    offset += 2;
-                    buf[offset..offset+2].copy_from_slice(&0u16.to_le_bytes());
-                    offset += 2;
-                    buf[offset..offset+4].copy_from_slice(&0u32.to_le_bytes());
-                    offset += 4;
-                    buf[offset..offset+8].copy_from_slice(&allocated_size.to_le_bytes());
-                    offset += 8;
-                    buf[offset..offset+8].copy_from_slice(&real_size.to_le_bytes());
-                    offset += 8;
-                    buf[offset..offset+8].copy_from_slice(&initialized_size.to_le_bytes());
-                    offset += 8;
-
-                    for run in runs {
-                        buf[offset..offset+8].copy_from_slice(&run.cluster_count.to_le_bytes());
-                        offset += 8;
-                        buf[offset..offset+8].copy_from_slice(&run.start_cluster.to_le_bytes());
-                        offset += 8;
-                    }
-                    buf[offset] = 0;
-                    offset += 1;
-                }
+        match &self.data {
+            AttributeData::Resident(content) => {
+                buf.resize(offset + 8 + content.len(), 0);
+                buf[offset..offset+4].copy_from_slice(&(content.len() as u32).to_le_bytes());
+                offset += 4;
+                buf[offset..offset+2].copy_from_slice(&24u16.to_le_bytes());
+                offset += 2;
+                buf[offset..offset+2].copy_from_slice(&0u16.to_le_bytes());
+                offset += 2;
+                buf[offset..offset+content.len()].copy_from_slice(content);
+                offset += content.len();
             }
+            AttributeData::NonResident { runs, allocated_size, real_size, initialized_size } => {
+                let runs_size = runs.len() * 16 + 1;
+                buf.resize(offset + 40 + runs_size, 0);
+                buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
+                offset += 8;
+                buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
+                offset += 8;
+                buf[offset..offset+2].copy_from_slice(&40u16.to_le_bytes());
+                offset += 2;
+                buf[offset..offset+2].copy_from_slice(&0u16.to_le_bytes());
+                offset += 2;
+                buf[offset..offset+4].copy_from_slice(&0u32.to_le_bytes());
+                offset += 4;
+                buf[offset..offset+8].copy_from_slice(&allocated_size.to_le_bytes());
+                offset += 8;
+                buf[offset..offset+8].copy_from_slice(&real_size.to_le_bytes());
+                offset += 8;
+                buf[offset..offset+8].copy_from_slice(&initialized_size.to_le_bytes());
+                offset += 8;
 
-            // Pad to 8-byte boundary
-            while offset % 8 != 0 {
+                for run in runs {
+                    buf[offset..offset+8].copy_from_slice(&run.cluster_count.to_le_bytes());
+                    offset += 8;
+                    buf[offset..offset+8].copy_from_slice(&run.start_cluster.to_le_bytes());
+                    offset += 8;
+                }
                 buf[offset] = 0;
                 offset += 1;
             }
-
-            &buf[..offset]
         }
+
+        // Pad to 8-byte boundary
+        while offset % 8 != 0 {
+            if offset >= buf.len() {
+                buf.push(0);
+            } else {
+                buf[offset] = 0;
+            }
+            offset += 1;
+        }
+
+        buf.truncate(offset);
+        buf
     }
 
     pub fn deserialize(data: &[u8]) -> FilesystemResult<Self> {
