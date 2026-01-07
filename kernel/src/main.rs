@@ -39,6 +39,7 @@ use ide::ide_initialize;
 
 mod init;
 mod utils;
+mod shell;
 
 use ahci;
 use galleon2::{ GalleonFilesystem, FilesystemStats };
@@ -402,11 +403,15 @@ unsafe extern "C" fn kmain() -> ! {
     #[cfg(test)]
     test_main();
 
-    kprintln!("System idle. Halting CPU...");
+    // Launch interactive shell
+    kprintln!();
+    kprintln!("Filesystem tests complete. Launching shell...");
+    kprintln!();
+    shell::init();
 
-    // Enter an infinite HALT loop.
+    // Enter idle loop (shell handles keyboard input asynchronously)
     loop {
-        core::arch::asm!("hlt");
+        x86_64::instructions::hlt();
     }
 }
 

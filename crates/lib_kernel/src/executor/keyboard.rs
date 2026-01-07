@@ -57,20 +57,38 @@ impl Stream for ScancodeStream {
     }
 }
 
+/// Global keyboard handler callback (set by shell or other modules)
+static mut KEYBOARD_HANDLER: Option<fn(DecodedKey)> = None;
+
+/// Set the keyboard input handler
+pub fn set_keyboard_handler(handler: fn(DecodedKey)) {
+    unsafe {
+        KEYBOARD_HANDLER = Some(handler);
+    }
+}
+
 pub async fn print_keypresses() {
     let mut scancodes = ScancodeStream::new();
     let mut keyboard = Keyboard::new(
-        ScancodeSet1::new(), 
-        layouts::Us104Key, 
+        ScancodeSet1::new(),
+        layouts::Us104Key,
         HandleControl::Ignore
     );
 
     while let Some(scancode) = scancodes.next().await {
         if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
             if let Some(key) = keyboard.process_keyevent(key_event) {
-                match key {
-                    DecodedKey::Unicode(character) => print!("{}", character),
-                    DecodedKey::RawKey(key) => print!("{:?}", key),
+                // Send to registered handler if available
+                unsafe {
+                    if let Some(handler) = KEYBOARD_HANDLER {
+                        handler(key);
+                    } else {
+                        // Fallback: just print the key
+                        match key {
+                            DecodedKey::Unicode(character) => print!("{}", character),
+                            DecodedKey::RawKey(key) => print!("{:?}", key),
+                        }
+                    }
                 }
             }
         }

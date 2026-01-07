@@ -45,7 +45,7 @@ pub fn init_kernel() -> Result<(), &'static str> {
             kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
             kprintln!("All systems operational");
             kprintln!("");
-            kprintln!("=== Entering idle state ===");
+
             Ok(())
         }
         Ok(None) => {
@@ -58,7 +58,7 @@ pub fn init_kernel() -> Result<(), &'static str> {
             kprintln!("=== PrismaOS Kernel Successfully Initialized ===");
             kprintln!("All systems operational");
             kprintln!("");
-            kprintln!("=== Entering idle state ===");
+
             Ok(())
         }
         Err(e) => Err(e),
