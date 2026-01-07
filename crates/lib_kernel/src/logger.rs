@@ -6,17 +6,19 @@
 //! # Features
 //!
 //! - **6 log levels**: TRACE, DEBUG, INFO, WARN, ERROR, CRITICAL
-//! - **Circular ring buffer**: 1024 entries with static allocation
+//! - **Circular ring buffer**: 256 entries with compile-time static allocation
 //! - **File & line tracking**: Automatic location capture via macros
 //! - **Color-coded output**: Different colors for each log level
 //! - **Zero allocations**: All memory statically allocated at compile time
 //! - **Interrupt safe**: Lock-free writes using atomic operations
+//! - **NO INITIALIZATION NEEDED**: Ready to use immediately - just import the macros
 //!
 //! # Usage
 //!
 //! ```rust
 //! use lib_kernel::{log_info, log_warn, log_error};
 //!
+//! // NO initialization required - just start logging!
 //! log_info!("System initialized");
 //! log_warn!("Using fallback configuration");
 //! log_error!("Failed to mount filesystem: {}", error);
@@ -342,25 +344,17 @@ impl KernelLogger {
 
 /// Global logger instance (static, initialized at compile time - ZERO runtime allocation)
 ///
-/// The entire 280 KB buffer is allocated in the kernel's data section at compile time,
+/// The entire ~70 KB buffer is allocated in the kernel's .bss section at compile time,
 /// ensuring no stack overflow or heap allocation occurs during initialization.
+///
+/// **NO INITIALIZATION NEEDED** - Just import and use via the logging macros.
 pub static mut GLOBAL_LOGGER: KernelLogger = KernelLogger::new();
-
-/// Initialize the global logger (no-op for compatibility)
-///
-/// The logger is now initialized at compile time, so this function does nothing.
-/// It's kept for API compatibility with the original design.
-///
-/// # Safety
-///
-/// This function is safe to call and does nothing - initialization happens at compile time.
-pub fn init_logger() {
-    // Logger is already initialized at compile time - nothing to do
-}
 
 /// Get a mutable reference to the global logger
 ///
 /// Always returns a valid reference since the logger is initialized at compile time.
+///
+/// **NO INITIALIZATION NEEDED** - The logger is ready to use immediately.
 pub fn get_logger() -> &'static mut KernelLogger {
     unsafe { &mut GLOBAL_LOGGER }
 }
