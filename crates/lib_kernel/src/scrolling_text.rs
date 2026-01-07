@@ -6,7 +6,7 @@
 //! - Only dirty lines are re-rendered to framebuffer
 //! - Supports scrollback buffer for history
 
-use core::ptr;
+use core::{any::type_name_of_val, mem::transmute, ptr};
 use crate::font::{draw_string, PsfFont};
 
 extern crate alloc;
@@ -511,7 +511,9 @@ pub fn init_global_renderer(renderer: ScrollingTextRenderer<'static>) {
 pub fn write_global(text: &[u8]) {
     unsafe {
         if let Some(ref mut renderer) = GLOBAL_RENDERER {
-            renderer.write_text(text);
+            assert!(renderer.fb_addr != ptr::null_mut(), "Framebuffer address is null in global renderer");
+            assert!(type_name_of_val(&text) == "&[u8]", "Expected &[u8] for text, found {}", type_name_of_val(&text));
+            renderer.write_text(&text);
         }
     }
 }
@@ -558,7 +560,7 @@ impl LineWriter {
     }
 
     pub fn write_line(&mut self) {
-        if self.pos < self.buffer.len() {
+        if self.pos < (self.buffer.len() + 1 ) {
             self.buffer[self.pos] = b'\n';
             self.pos += 1;
         }

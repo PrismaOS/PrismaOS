@@ -128,6 +128,7 @@ impl FileAttributes {
     }
 }
 
+// TODO: u32s -> Bitmask
 /// Standard Information attribute data
 #[derive(Debug, Clone)]
 pub struct StandardInformation {
@@ -233,6 +234,16 @@ pub struct FileName {
     pub allocated_size: u64,
     pub times: FileTimes,
     pub file_attributes: FileAttributes,
+}
+
+// define a global atomic usize
+static GLOBAL_GLOAL_COUNTER: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+fn recursive_gloal_increment() {
+    GLOBAL_GLOAL_COUNTER.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+    kprintln!("[FileRecord] GLOBAL_GLOAL_COUNTER incremented to {}", GLOBAL_GLOAL_COUNTER.load(core::sync::atomic::Ordering::SeqCst));
+
+    recursive_gloal_increment();
 }
 
 impl FileName {
@@ -393,11 +404,15 @@ impl FileRecordManager {
     pub fn create_directory(
         &mut self,
         parent_directory: FileRecordNumber,
-        name: String,
+        ptr: *const u8,
+        len: usize,
+        cap: usize,
     ) -> FilesystemResult<FileRecordNumber> {
-        kprintln!("[FileRecord] create_directory: '{}'", name);
+        kprintln!("[FileRecord] create_directory: ptr={:?}, len={}, cap={}", ptr, len, cap); 
+        // for _ in 1..30000 {
+        //     x86_64::instructions::hlt();
+        // }
         let transaction_id = self.journal_manager.begin_transaction();
-
         // Allocate new directory record
         let dir_record_number = self.mft_manager.allocate_record()?;
         kprintln!("[FileRecord] Allocated record {}", dir_record_number);
@@ -409,6 +424,7 @@ impl FileRecordManager {
         flags.is_directory = true;
         record.header.set_flags(flags);
         kprintln!("[FileRecord] Flags set");
+
 
         // Add Standard Information attribute
         kprintln!("[FileRecord] Creating StandardInformation...");
@@ -422,15 +438,15 @@ impl FileRecordManager {
         kprintln!("[FileRecord] StandardInformation added");
 
         // Add File Name attribute
-        kprintln!("[FileRecord] Creating FileName...");
-        let file_name = FileName::new(parent_directory, name.clone(), true);
-        kprintln!("[FileRecord] Serializing FileName...");
-        let file_name_data = file_name.serialize();
-        kprintln!("[FileRecord] Creating FileName attribute...");
-        let file_name_attr = Attribute::new_resident(AttributeType::FileName, file_name_data);
-        kprintln!("[FileRecord] Adding FileName attribute...");
-        record.add_attribute(file_name_attr);
-        kprintln!("[FileRecord] FileName added");
+        // kprintln!("[FileRecord] Creating FileName...");
+        // let file_name = FileName::new(parent_directory, name.clone(), true);
+        // kprintln!("[FileRecord] Serializing FileName...");
+        // let file_name_data = file_name.serialize();
+        // kprintln!("[FileRecord] Creating FileName attribute...");
+        // let file_name_attr = Attribute::new_resident(AttributeType::FileName, file_name_data);
+        // kprintln!("[FileRecord] Adding FileName attribute...");
+        // record.add_attribute(file_name_attr);
+        // kprintln!("[FileRecord] FileName added");
 
         // Add Index Root attribute for directory entries
         kprintln!("[FileRecord] Creating IndexRoot...");
@@ -442,6 +458,9 @@ impl FileRecordManager {
         kprintln!("[FileRecord] IndexRoot added");
         
         kprintln!("[FileRecord] Attributes added, logging operation...");
+
+        // recursive_gloal_increment();
+
         self.journal_manager.log_operation(
             transaction_id,
             OperationType::CreateDirectory,

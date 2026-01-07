@@ -12,6 +12,7 @@
 //! All functions in this file are intentionally small and well-documented so
 //! the platform-specific startup path remains easy to audit.
 
+#![feature(vec_into_raw_parts)]
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
@@ -21,7 +22,7 @@
 #![reexport_test_harness_main = "test_main"]
 #![allow(warnings)]
 
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use core::panic::PanicInfo;
 use lib_kernel::{ consts::BASE_REVISION, kprintln, scrolling_text };
 
@@ -205,7 +206,7 @@ unsafe extern "C" fn kmain() -> ! {
             Ok(stats) => {
                 kprintln!("Filesystem Statistics:");
                 kprintln!("   Total space: {} KB", stats.total_space / 1024);
-                kprintln!("   Free space:  {} KB", stats.free_space / 1024); // TODO: Why do we get a hardware fault here? @ghostedgaming
+                kprintln!("   Free space:  {} KB", stats.free_space / 1024);
                 kprintln!("   Used space:  {} KB", stats.used_space / 1024);
                 kprintln!("   Cluster size: {} bytes", stats.cluster_size);
                 kprintln!("   Total clusters: {}", stats.total_clusters);
@@ -228,8 +229,11 @@ unsafe extern "C" fn kmain() -> ! {
         // Create sample directory structure
         kprintln!("Creating sample file structure...");
 
+        let thing = String::from("home");
+        let (ptr, len, cap) = thing.into_raw_parts();
+
         // Create directories
-        let home_dir = match filesystem.create_directory(5, "home".to_string()) {
+        let home_dir = match unsafe { filesystem.create_directory(5, ptr, len, cap) } {
             Ok(dir) => {
                 kprintln!("✓ Created directory: /home");
                 dir
@@ -240,27 +244,27 @@ unsafe extern "C" fn kmain() -> ! {
             }
         };
 
-        let docs_dir = match filesystem.create_directory(home_dir, "documents".to_string()) {
-            Ok(dir) => {
-                kprintln!("✓ Created directory: /home/documents");
-                dir
-            }
-            Err(e) => {
-                kprintln!("✗ Failed to create /home/documents: {:?}", e);
-                home_dir
-            }
-        };
-
-        let projects_dir = match filesystem.create_directory(home_dir, "projects".to_string()) {
-            Ok(dir) => {
-                kprintln!("✓ Created directory: /home/projects");
-                dir
-            }
-            Err(e) => {
-                kprintln!("✗ Failed to create /home/projects: {:?}", e);
-                home_dir
-            }
-        };
+        //let docs_dir = match filesystem.create_directory(home_dir, "documents".to_string()) {
+        //    Ok(dir) => {
+        //        kprintln!("✓ Created directory: /home/documents");
+        //        dir
+        //    }
+        //    Err(e) => {
+        //        kprintln!("✗ Failed to create /home/documents: {:?}", e);
+        //        home_dir
+        //    }
+        //};
+//
+        //let projects_dir = match filesystem.create_directory(home_dir, "projects".to_string()) {
+        //    Ok(dir) => {
+        //        kprintln!("✓ Created directory: /home/projects");
+        //        dir
+        //    }
+        //    Err(e) => {
+        //        kprintln!("✗ Failed to create /home/projects: {:?}", e);
+        //        home_dir
+        //    }
+        //};
 
         // Create sample files
         kprintln!("Creating sample files...");
@@ -273,30 +277,30 @@ unsafe extern "C" fn kmain() -> ! {
             Err(e) => kprintln!("✗ Failed to create README.txt: {:?}", e),
         }
 
-        // Create a config file in documents
-        let config_content =
-            b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
-        match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
-            Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
-            Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
-        }
+        //// Create a config file in documents
+        //let config_content =
+        //    b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
+        //match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
+        //    Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
+        //    Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
+        //}
 
-        // Create a source code file in projects
-        let source_content =
-            b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
-        match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
-            Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
-            Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
-        }
+        //// Create a source code file in projects
+        //let source_content =
+        //    b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
+        //match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
+        //    Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
+        //    Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
+        //}
 
-        // Create a large file to demonstrate extent allocation
-        let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
-        match
-            filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content))
-        {
-            Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
-            Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
-        }
+        //// Create a large file to demonstrate extent allocation
+        //let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
+        //match
+        //    filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content))
+        //{
+        //    Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
+        //    Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
+        //}
 
         // List root directory contents
         kprintln!("Root directory listing:");

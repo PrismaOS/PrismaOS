@@ -50,8 +50,10 @@ impl FileManager {
     }
 
     /// Create a new directory in the current directory
-    pub fn create_directory(&mut self, name: String) -> FilesystemResult<FileRecordNumber> {
-        self.filesystem.create_directory(self.current_directory, name)
+    pub fn create_directory(&mut self, ptr: *const u8, len: usize, cap: usize) -> FilesystemResult<FileRecordNumber> {
+        unsafe {
+            self.filesystem.create_directory(self.current_directory, ptr, len, cap)
+        }
     }
 
     /// Read file contents as string

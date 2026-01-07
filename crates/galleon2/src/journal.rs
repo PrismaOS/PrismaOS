@@ -3,7 +3,10 @@
 //! Provides crash recovery and transaction support with journaling.
 //! All filesystem modifications are logged before being committed.
 
-use alloc::{vec, vec::Vec, collections::VecDeque};
+use core::ops::{Add, AddAssign};
+
+use alloc::{borrow::ToOwned, collections::VecDeque, vec::{self, Vec}};
+use lib_kernel::kprint;
 use crate::{FilesystemResult, FilesystemError, ide_read_sectors, ide_write_sectors};
 
 /// Transaction operation types
@@ -75,8 +78,7 @@ impl LogRecord {
         self.checksum == self.calculate_checksum()
     }
 
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut data = Vec::new();
+    pub fn serialize(&self, data: &mut Vec<u8>) -> Vec<u8> {
 
         // Header
         data.extend_from_slice(b"JRNL"); // Signature
@@ -97,7 +99,7 @@ impl LogRecord {
             data.push(0);
         }
 
-        data
+        data.to_owned()
     }
 
     pub fn deserialize(data: &[u8]) -> FilesystemResult<Self> {
@@ -235,6 +237,7 @@ impl JournalManager {
         undo_data: Vec<u8>,
         redo_data: Vec<u8>,
     ) -> FilesystemResult<()> {
+        lib_kernel::kprintln!("[JOURNAL] Logging operation {:?} for transaction {}\n", operation_type, transaction_id);
         let record = LogRecord::new(
             self.current_sequence,
             operation_type,
@@ -242,6 +245,7 @@ impl JournalManager {
             undo_data,
             redo_data,
         );
+        lib_kernel::kprintln!("[JOURNAL] Created log record: {:?}", record);
 
         // Find the transaction
         if let Some(transaction) = self.active_transactions.iter_mut()
@@ -251,9 +255,14 @@ impl JournalManager {
             return Err(FilesystemError::InvalidParameter);
         }
 
+        lib_kernel::kprintln!("[JOURNAL] Writing log record to journal on disk...");
+
         // Write the record to journal
         self.write_log_record(&record)?;
+        lib_kernel::kprintln!("[JOURNAL] Log record written successfully.");
         self.current_sequence += 1;
+
+
 
         Ok(())
     }
@@ -319,12 +328,15 @@ impl JournalManager {
     }
 
     fn write_log_record(&self, record: &LogRecord) -> FilesystemResult<()> {
-        let serialized = record.serialize();
+        lib_kernel::kprintln!("[JOURNAL] Preparing to write log record: {:?}", record);
+        let mut data = Vec::new();
+        let serialized = record.serialize(&mut data);
+        lib_kernel::kprintln!("[JOURNAL] Serialized log record ({} bytes)", serialized.len());
         if serialized.is_empty() {
             return Err(FilesystemError::InvalidParameter);
         }
 
-        let sectors_needed = (serialized.len() + 511) / 512;
+        let sectors_needed = serialized.len().add(511).div_ceil(512);
 
         // Calculate journal position (circular buffer)
         // Ensure we don't divide by zero and have a reasonable record size
@@ -337,8 +349,16 @@ impl JournalManager {
         };
         let write_sector = self.journal_start_sector + journal_offset;
 
+        let thing = align_of_val(&sectors_needed);
+
+        lib_kernel::kprintln!("Aligned size: {}", thing);
+
         // Prepare sector-aligned data
-        let mut sector_data = vec![0u8; sectors_needed * 512];
+        let mut sector_data = alloc::vec![0u8; sectors_needed * 512];
+
+        let other_thing = align_of_val(&sector_data);
+        lib_kernel::kprintln!("Aligned sector data size: {}", other_thing);
+
         sector_data[..serialized.len()].copy_from_slice(&serialized);
 
         ide_write_sectors(self.drive, sectors_needed as u8, write_sector as u32, &sector_data)?;
@@ -370,7 +390,7 @@ impl JournalManager {
                         if !self.is_transaction_committed(record.target_file_record) {
                             self.apply_undo(&record)?;
                         }
-                        offset += record.serialize().len();
+                        offset += record.serialize(&mut Vec::new()).len();
                     } else {
                         break;
                     }
@@ -386,7 +406,7 @@ impl JournalManager {
     }
 
     fn read_journal_sector(&self, sector_offset: u64) -> FilesystemResult<Vec<u8>> {
-        let mut sector_data = vec![0u8; 512];
+        let mut sector_data = alloc::vec![0u8; 512];
         ide_read_sectors(
             self.drive,
             1,
