@@ -17,7 +17,7 @@ lazy_static! {
         
         // Hardware interrupt handlers using proper range indexing
         idt[InterruptIndex::Timer.as_u8()].set_handler_fn(timer_interrupt_handler);
-        // idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(keyboard_interrupt_handler);
+        idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(keyboard_interrupt_handler);
         idt[InterruptIndex::Mouse.as_u8()].set_handler_fn(mouse_interrupt_handler);
             
         idt
@@ -90,23 +90,22 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
     }
 }
 
-// TODO: Make More generic so as not to depend on a particular driver
-// extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
-//     // Let the device manager handle the keyboard interrupt
-//     let handled = crate::drivers::device_manager().handle_interrupt(InterruptIndex::Keyboard.as_u8());
-//     
-//     if !handled {
-//         // Fallback: directly add scancode to async queue if driver didn't handle it
-//         use x86_64::instructions::port::Port;
-//         let mut port = Port::new(0x60);
-//         let scancode: u8 = unsafe { port.read() };
-//         crate::executor::keyboard::add_scancode(scancode);
-//     }
-//     
-//     unsafe {
-//         crate::consts::PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
-//     }
-// }
+/// Keyboard interrupt handler - reads scancode and adds to async queue
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    use x86_64::instructions::port::Port;
+
+    // Read scancode from PS/2 keyboard port
+    let mut port = Port::new(0x60);
+    let scancode: u8 = unsafe { port.read() };
+
+    // Add to async keyboard queue for processing
+    crate::executor::keyboard::add_scancode(scancode);
+
+    // Notify PIC that interrupt has been handled
+    unsafe {
+        crate::consts::PICS.lock().notify_end_of_interrupt(InterruptIndex::Keyboard.as_u8());
+    }
+}
 
 extern "x86-interrupt" fn mouse_interrupt_handler(_stack_frame: InterruptStackFrame) {
     use x86_64::instructions::port::Port;
