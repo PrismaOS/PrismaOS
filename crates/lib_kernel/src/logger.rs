@@ -42,6 +42,9 @@ const LOG_BUFFER_SIZE: usize = 256;
 /// Maximum message length per log entry (bytes)
 const MAX_MESSAGE_LEN: usize = 256;
 
+/// Static buffer for log formatting (NO runtime allocation!)
+static mut LOG_FORMAT_BUFFER: [u8; 512] = [0; 512];
+
 /// Log levels for kernel logging
 ///
 /// Levels are ordered from least to most severe. Use `set_min_level()` to
@@ -228,7 +231,7 @@ impl KernelLogger {
         self.write_to_screen(&entry);
     }
 
-    /// Write log entry to screen using the global renderer
+    /// Write log entry to screen using the global renderer (NO runtime allocation!)
     ///
     /// Format: `[LEVEL] [file:line] message\n`
     fn write_to_screen(&self, entry: &LogEntry) {
@@ -240,35 +243,32 @@ impl KernelLogger {
                 let (fg, bg) = entry.level.colors();
                 renderer.set_colors(fg, bg);
             }
-        }
 
-        // Format the log message
-        let mut buffer = [0u8; 512];
-        let mut pos = 0;
+            // Format the log message using static buffer (NO allocation!)
+            let mut pos = 0;
 
-        // Write: "[LEVEL] "
-        pos += Self::copy_bytes(&mut buffer[pos..], b"[");
-        pos += Self::copy_bytes(&mut buffer[pos..], entry.level.as_str());
-        pos += Self::copy_bytes(&mut buffer[pos..], b"] ");
+            // Write: "[LEVEL] "
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], b"[");
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], entry.level.as_str());
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], b"] ");
 
-        // Write: "[file:line] "
-        pos += Self::copy_bytes(&mut buffer[pos..], b"[");
-        pos += Self::copy_bytes(&mut buffer[pos..], entry.file.as_bytes());
-        pos += Self::copy_bytes(&mut buffer[pos..], b":");
-        pos += Self::write_u32(&mut buffer[pos..], entry.line);
-        pos += Self::copy_bytes(&mut buffer[pos..], b"] ");
+            // Write: "[file:line] "
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], b"[");
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], entry.file.as_bytes());
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], b":");
+            pos += Self::write_u32(&mut LOG_FORMAT_BUFFER[pos..], entry.line);
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], b"] ");
 
-        // Write message
-        pos += Self::copy_bytes(&mut buffer[pos..], &entry.message[..entry.message_len]);
+            // Write message
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], &entry.message[..entry.message_len]);
 
-        // Add newline
-        pos += Self::copy_bytes(&mut buffer[pos..], b"\n");
+            // Add newline
+            pos += Self::copy_bytes(&mut LOG_FORMAT_BUFFER[pos..], b"\n");
 
-        // Write to global renderer
-        write_global(&buffer[..pos]);
+            // Write to global renderer
+            write_global(&LOG_FORMAT_BUFFER[..pos]);
 
-        // Reset colors to default (white on black)
-        unsafe {
+            // Reset colors to default (white on black)
             if let Some(ref mut renderer) = crate::scrolling_text::GLOBAL_RENDERER {
                 renderer.set_colors(0xFFFFFFFF, 0x00000000);
             }

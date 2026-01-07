@@ -265,27 +265,33 @@ unsafe extern "C" fn kmain() -> ! {
             }
         };
 
-        //let docs_dir = match filesystem.create_directory(home_dir, "documents".to_string()) {
-        //    Ok(dir) => {
-        //        kprintln!("✓ Created directory: /home/documents");
-        //        dir
-        //    }
-        //    Err(e) => {
-        //        kprintln!("✗ Failed to create /home/documents: {:?}", e);
-        //        home_dir
-        //    }
-        //};
-//
-        //let projects_dir = match filesystem.create_directory(home_dir, "projects".to_string()) {
-        //    Ok(dir) => {
-        //        kprintln!("✓ Created directory: /home/projects");
-        //        dir
-        //    }
-        //    Err(e) => {
-        //        kprintln!("✗ Failed to create /home/projects: {:?}", e);
-        //        home_dir
-        //    }
-        //};
+        // Create /home/documents directory
+        let docs_string = String::from("documents");
+        let (docs_ptr, docs_len, docs_cap) = docs_string.into_raw_parts();
+        let docs_dir = match unsafe { filesystem.create_directory(home_dir, docs_ptr, docs_len, docs_cap) } {
+            Ok(dir) => {
+                kprintln!("✓ Created directory: /home/documents");
+                dir
+            }
+            Err(e) => {
+                kprintln!("✗ Failed to create /home/documents: {:?}", e);
+                home_dir
+            }
+        };
+
+        // Create /home/projects directory
+        let projects_string = String::from("projects");
+        let (projects_ptr, projects_len, projects_cap) = projects_string.into_raw_parts();
+        let projects_dir = match unsafe { filesystem.create_directory(home_dir, projects_ptr, projects_len, projects_cap) } {
+            Ok(dir) => {
+                kprintln!("✓ Created directory: /home/projects");
+                dir
+            }
+            Err(e) => {
+                kprintln!("✗ Failed to create /home/projects: {:?}", e);
+                home_dir
+            }
+        };
 
         // Create sample files
         kprintln!("Creating sample files...");
@@ -298,30 +304,30 @@ unsafe extern "C" fn kmain() -> ! {
             Err(e) => kprintln!("✗ Failed to create README.txt: {:?}", e),
         }
 
-        //// Create a config file in documents
-        //let config_content =
-        //    b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
-        //match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
-        //    Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
-        //    Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
-        //}
+        // Create a config file in documents
+        let config_content =
+            b"[system]\nversion=1.0\nkernel=PrismaOS\nfilesystem=Galleon2\n\n[features]\njournaling=enabled\ncompression=disabled\nencryption=disabled".to_vec();
+        match filesystem.create_file(docs_dir, "config.ini".to_string(), Some(config_content)) {
+            Ok(_) => kprintln!("✓ Created file: /home/documents/config.ini"),
+            Err(e) => kprintln!("✗ Failed to create config.ini: {:?}", e),
+        }
 
-        //// Create a source code file in projects
-        //let source_content =
-        //    b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
-        //match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
-        //    Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
-        //    Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
-        //}
+        // Create a source code file in projects
+        let source_content =
+            b"// PrismaOS Kernel Module\n// Advanced filesystem demonstration\n\nuse galleon2::GalleonFilesystem;\n\nfn main() {\n    println!(\"Hello from PrismaOS!\");\n    // Demonstrate filesystem operations\n    let fs = GalleonFilesystem::mount(0).unwrap();\n    println!(\"Filesystem mounted successfully!\");\n}".to_vec();
+        match filesystem.create_file(projects_dir, "demo.rs".to_string(), Some(source_content)) {
+            Ok(_) => kprintln!("✓ Created file: /home/projects/demo.rs"),
+            Err(e) => kprintln!("✗ Failed to create demo.rs: {:?}", e),
+        }
 
-        //// Create a large file to demonstrate extent allocation
-        //let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
-        //match
-        //    filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content))
-        //{
-        //    Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
-        //    Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
-        //}
+        // Create a large file to demonstrate extent allocation
+        let large_content = alloc::vec![0x42u8; 8192]; // 8KB file to test multi-cluster allocation
+        match
+            filesystem.create_file(projects_dir, "largefile.bin".to_string(), Some(large_content))
+        {
+            Ok(_) => kprintln!("✓ Created file: /home/projects/largefile.bin (8KB)"),
+            Err(e) => kprintln!("✗ Failed to create largefile.bin: {:?}", e),
+        }
 
         // List root directory contents
         kprintln!("Root directory listing:");

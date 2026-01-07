@@ -543,41 +543,50 @@ pub fn kdraw_canvas(pixels: &[u32], width: usize, height: usize) {
     }
 }
 
-/// Helper struct for formatting text before writing
-pub struct LineWriter {
-    buffer: [u8; 512],
-    pos: usize,
-}
+/// Static buffer for LineWriter (NO runtime allocation!)
+static mut LINE_WRITER_BUFFER: [u8; 512] = [0; 512];
+static mut LINE_WRITER_POS: usize = 0;
+
+/// Helper struct for formatting text before writing (uses static buffer - NO allocation!)
+pub struct LineWriter;
 
 impl LineWriter {
+    /// Create a new LineWriter (resets static buffer - NO allocation!)
     pub fn new() -> Self {
-        Self {
-            buffer: [0; 512],
-            pos: 0,
+        unsafe {
+            LINE_WRITER_POS = 0;
         }
+        Self
     }
 
+    /// Get the formatted bytes from the static buffer
     pub fn finish(&self) -> &[u8] {
-        &self.buffer[..self.pos]
+        unsafe { &LINE_WRITER_BUFFER[..LINE_WRITER_POS] }
     }
 
+    /// Write the buffer content with a newline
     pub fn write_line(&mut self) {
-        if self.pos < (self.buffer.len() + 1 ) {
-            self.buffer[self.pos] = b'\n';
-            self.pos += 1;
+        unsafe {
+            if LINE_WRITER_POS < LINE_WRITER_BUFFER.len() {
+                LINE_WRITER_BUFFER[LINE_WRITER_POS] = b'\n';
+                LINE_WRITER_POS += 1;
+            }
+            write_global(&LINE_WRITER_BUFFER[..LINE_WRITER_POS]);
         }
-        write_global(&self.buffer[..self.pos]);
     }
 }
 
 impl core::fmt::Write for LineWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let bytes = s.as_bytes();
-        let remaining = self.buffer.len() - self.pos;
-        let to_copy = bytes.len().min(remaining);
-        self.buffer[self.pos..self.pos + to_copy].copy_from_slice(&bytes[..to_copy]);
-        self.pos += to_copy;
-        Ok(())
+        unsafe {
+            let bytes = s.as_bytes();
+            let remaining = LINE_WRITER_BUFFER.len() - LINE_WRITER_POS;
+            let to_copy = bytes.len().min(remaining);
+            LINE_WRITER_BUFFER[LINE_WRITER_POS..LINE_WRITER_POS + to_copy]
+                .copy_from_slice(&bytes[..to_copy]);
+            LINE_WRITER_POS += to_copy;
+            Ok(())
+        }
     }
 }
 
