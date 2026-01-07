@@ -24,6 +24,7 @@
 
 use alloc::string::{String, ToString};
 use core::panic::PanicInfo;
+use alloc::boxed::Box;
 use lib_kernel::{ consts::BASE_REVISION, kprintln, scrolling_text };
 
 extern crate alloc;
@@ -46,6 +47,18 @@ use galleon2::{ GalleonFilesystem, FilesystemStats };
 use luminal;
 use pci::init_pci;
 use usb;
+use spin::Mutex;
+
+// Global filesystem instance
+static GLOBAL_FILESYSTEM: Mutex<Option<&'static mut GalleonFilesystem>> = Mutex::new(None);
+
+pub fn with_filesystem<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&GalleonFilesystem) -> R,
+{
+    let guard = GLOBAL_FILESYSTEM.lock();
+    guard.as_ref().map(|fs| f(*fs))
+}
 
 // NOTE: speaker and other modules are available as `crate::speaker` if
 /// needed; avoid glob imports here to keep the top-level clean.
@@ -396,6 +409,10 @@ unsafe extern "C" fn kmain() -> ! {
         Ok(()) => kprintln!("All filesystem operations completed successfully"),
         Err(e) => kprintln!("Filesystem operations failed: {:?}", e),
     }
+
+    // Store filesystem globally for shell access (leak it to make it 'static)
+    let fs_static: &'static mut GalleonFilesystem = Box::leak(Box::new(filesystem));
+    *GLOBAL_FILESYSTEM.lock() = Some(fs_static);
 
     // Initialize USB subsystem
     init::usb::init_usb();

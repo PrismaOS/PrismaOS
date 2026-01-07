@@ -524,6 +524,18 @@ pub fn write_global(text: &[u8]) {
 pub fn kdraw_canvas(pixels: &[u32], width: usize, height: usize) {
     unsafe {
         if let Some(ref mut renderer) = GLOBAL_RENDERER {
+            // Calculate how many lines the canvas will occupy
+            let lines_used = (height + renderer.line_height - 1) / renderer.line_height;
+            
+            // Ensure we have space for the canvas by scrolling BEFORE drawing
+            let target_line = renderer.cursor_line + lines_used;
+            if target_line >= renderer.line_count {
+                for _ in 0..(target_line - renderer.line_count + 1) {
+                    renderer.scroll_up();
+                }
+            }
+            
+            // Now draw the canvas at the correct position (after any scrolling)
             let canvas = renderer.create_canvas(width, height);
             for y in 0..height.min(canvas.height) {
                 for x in 0..width.min(canvas.width) {
@@ -531,14 +543,9 @@ pub fn kdraw_canvas(pixels: &[u32], width: usize, height: usize) {
                     canvas.draw_pixel(x, y, pixel);
                 }
             }
-            // Account for the drawn canvas in cursor positioning
-            let lines_used = (height + renderer.line_height - 1) / renderer.line_height;
+            
+            // Advance cursor past the canvas
             renderer.cursor_line += lines_used;
-            if renderer.cursor_line >= renderer.line_count {
-                for _ in 0..(renderer.cursor_line - renderer.line_count + 1) {
-                    renderer.scroll_up();
-                }
-            }
         }
     }
 }

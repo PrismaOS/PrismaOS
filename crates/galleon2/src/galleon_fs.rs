@@ -408,6 +408,11 @@ impl GalleonFilesystem {
         Self::create_system_files(&mft_manager, &super_block)?;
         kprintln!("System files created");
 
+        // Initialize B-tree root node
+        kprintln!("Initializing B-tree root node...");
+        Self::initialize_btree_root(&btree_manager)?;
+        kprintln!("B-tree root node initialized");
+
         kprintln!("Filesystem format completed successfully!");
         Ok(Self {
             drive,
@@ -540,6 +545,30 @@ impl GalleonFilesystem {
         );
         kprintln!("B-tree manager initialized");
 
+        // Verify B-tree root exists and is valid, initialize if needed
+        kprintln!("Verifying B-tree root node...");
+        kprintln!("DEBUG: index_allocation_start = {}", super_block.index_allocation_start);
+        kprintln!("DEBUG: cluster_size = {}", super_block.cluster_size);
+        match btree_manager.read_node(0) {
+            Ok(node) => {
+                kprintln!("B-tree root node is valid");
+                kprintln!("Root node has {} entries", node.entries.len());
+            }
+            Err(e) => {
+                kprintln!("B-tree root invalid or missing: {:?}", e);
+                kprintln!("Initializing B-tree root node...");
+                Self::initialize_btree_root(&btree_manager)?;
+                kprintln!("B-tree root node initialized");
+                
+                // Verify it was written correctly
+                kprintln!("Verifying initialization...");
+                match btree_manager.read_node(0) {
+                    Ok(node) => kprintln!("Verification successful, {} entries", node.entries.len()),
+                    Err(e) => kprintln!("Verification FAILED: {:?}", e),
+                }
+            }
+        }
+
         kprintln!("Filesystem mount completed successfully!");
         Ok(Self {
             drive,
@@ -568,6 +597,35 @@ impl GalleonFilesystem {
         mft_manager.write_record(&root_record)?;
 
         kprintln!("System files created successfully");
+        Ok(())
+    }
+
+    fn initialize_btree_root(btree_manager: &BTreeManager) -> FilesystemResult<()> {
+        kprintln!("Creating empty B-tree root node...");
+        
+        // Create an empty root node
+        use crate::btree::{IndexNode, IndexHeader, IndexEntry, INDEX_NODE_SIZE};
+        
+        let header = IndexHeader {
+            signature: *b"INDX",
+            entries_offset: 32,
+            index_length: 56, // Header (32) + one empty entry (24)
+            allocated_size: INDEX_NODE_SIZE as u32,
+            flags: 1, // Leaf node
+            sequence_number: 0,
+        };
+        
+        // Create a terminal entry (last entry marker)
+        let terminal_entry = IndexEntry::new_end_marker();
+        
+        let root_node = IndexNode {
+            header,
+            entries: alloc::vec![terminal_entry],
+            vcn: 0,
+        };
+        
+        btree_manager.write_node(&root_node)?;
+        kprintln!("B-tree root node initialized successfully");
         Ok(())
     }
 

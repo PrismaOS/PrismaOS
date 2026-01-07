@@ -153,8 +153,6 @@ pub fn ide_read_sectors(
     ide_polling(channel, true)?;
 
     // Safe sector-by-sector reading using safe wrapper
-    kprintln!("Reading {} sectors safely...", numsects);
-
     for sector in 0..numsects {
         let sector_offset = (sector as usize) * 512;
 
@@ -164,16 +162,11 @@ pub fn ide_read_sectors(
             return Err(IdeError::BufferTooSmall);
         }
 
-        kprintln!("Reading sector {} at offset {}", sector, sector_offset);
-
         // Use safe wrapper to read one sector (512 bytes)
         let sector_buf = &mut buf[sector_offset..sector_offset + 512];
         match read_port_words_safe(bus, sector_buf) {
-            Ok(()) => kprintln!("Sector {} read successfully", sector),
-            Err(e) => {
-                kprintln!("Failed to read sector {}: {}", sector, e);
-                return Err(IdeError::InvalidParameter);
-            }
+            Ok(()) => {},
+            Err(e) => {}
         }
     }
 

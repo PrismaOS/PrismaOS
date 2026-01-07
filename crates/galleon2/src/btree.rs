@@ -10,6 +10,7 @@ use crate::{
     file_record::FileName,
     ide_read_sectors, ide_write_sectors,
 };
+use lib_kernel::kprintln;
 
 pub const INDEX_NODE_SIZE: usize = 4096; // 4KB index nodes
 pub const INDEX_ENTRY_HEADER_SIZE: usize = 16;
@@ -434,21 +435,32 @@ impl BTreeManager {
     pub fn read_node(&self, vcn: u64) -> FilesystemResult<IndexNode> {
         let cluster_num = self.index_allocation_start + vcn;
         let sector_start = cluster_num * (self.cluster_size / 512) as u64;
-        let sectors_per_node = (INDEX_NODE_SIZE + 511) / 512;
+        let sectors_per_node = INDEX_NODE_SIZE / 512;  // INDEX_NODE_SIZE is always a multiple of 512
+
+        kprintln!("Reading B-tree node: vcn={}, cluster_num={}, sector_start={}, sectors={}", 
+                  vcn, cluster_num, sector_start, sectors_per_node);
 
         let mut node_data = vec![0u8; INDEX_NODE_SIZE];
         ide_read_sectors(self.drive, sectors_per_node as u8, sector_start as u32, &mut node_data)?;
 
+        kprintln!("First 16 bytes of node data: {:02x?}", &node_data[0..16]);
+        
         IndexNode::deserialize(&node_data, vcn)
     }
 
     pub fn write_node(&self, node: &IndexNode) -> FilesystemResult<()> {
         let cluster_num = self.index_allocation_start + node.vcn;
         let sector_start = cluster_num * (self.cluster_size / 512) as u64;
-        let sectors_per_node = (INDEX_NODE_SIZE + 511) / 512;
+        let sectors_per_node = INDEX_NODE_SIZE / 512;  // INDEX_NODE_SIZE is always a multiple of 512
+
+        kprintln!("Writing B-tree node: vcn={}, cluster_num={}, sector_start={}, sectors={}", 
+                  node.vcn, cluster_num, sector_start, sectors_per_node);
 
         let node_data = node.serialize();
+        kprintln!("First 16 bytes being written: {:02x?}", &node_data[0..16]);
+        
         ide_write_sectors(self.drive, sectors_per_node as u8, sector_start as u32, &node_data)?;
+        kprintln!("B-tree node written successfully");
         Ok(())
     }
 

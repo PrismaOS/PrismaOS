@@ -69,6 +69,11 @@ pub fn init() {
     kprintln!("===========================================");
     kprintln!("Type 'help' for available commands");
     kprintln!();
+    
+    // Run initial ls command on startup
+    cmd_ls(&[]);
+    kprintln!();
+    
     print_prompt();
 }
 
@@ -341,9 +346,38 @@ fn cmd_drivers(_args: &[&str]) -> CommandResult {
 
 fn cmd_ls(args: &[&str]) -> CommandResult {
     let path = if args.len() > 0 { args[0] } else { "/" };
-    kprintln!("Listing directory: {}", path);
-    kprintln!("  (Filesystem listing not yet implemented)");
-    CommandResult::Success
+    
+    // Try to get the global filesystem
+    if let Some(result) = crate::with_filesystem(|fs| {
+        kprintln!("Listing directory: {}", path);
+        
+        match fs.list_directory() {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    kprintln!("  (empty directory)");
+                } else {
+                    kprintln!();
+                    for (name, _record_num) in &entries {
+                        kprintln!("  {}", name);
+                    }
+                    kprintln!();
+                    kprintln!("Total: {} items", entries.len());
+                }
+                CommandResult::Success
+            }
+            Err(e) => {
+                kprintln!("  (filesystem B-tree not initialized - showing empty)");
+                kprintln!("  Debug: Error was {:?}", e);
+                CommandResult::Success
+            }
+        }
+    }) {
+        result
+    } else {
+        kprintln!("Listing directory: {}", path);
+        kprintln!("  (Filesystem not available)");
+        CommandResult::Success
+    }
 }
 
 fn cmd_cat(args: &[&str]) -> CommandResult {
