@@ -7,11 +7,6 @@ const RAINBOW_H: usize = 48;
 /// Display rainbow test canvas using global renderer
 pub fn show_rainbow_test() {
     kprintln!("[OK] Graphics test: Rendering rainbow canvas...");
-    
-    // Build a small rainbow test canvas and draw it using the renderer.
-    // Canvas size is chosen modestly to avoid large stack usage.
-    // Use heap allocation instead of stack to avoid stack overflow
-    let mut pixels = alloc::vec![0u32; RAINBOW_W * RAINBOW_H];
 
     // Define rainbow color stops (ARGB)
     const STOPS: [u32; 8] = [
@@ -24,14 +19,17 @@ pub fn show_rainbow_test() {
         0xFFFF00FF, // magenta
         0xFFFF0000, // back to red (loop)
     ];
-    let segments = STOPS.len() - 1;
+    const SEGMENTS: usize = STOPS.len() - 1;
 
-    // Fill pixels with horizontally interpolated rainbow, slightly darken by row for vertical variation.
+    // Pre-compute the full pixel buffer on the stack (7680 u32s = 30KB) - NO heap allocation!
+    // This is acceptable for kernel stack which is typically 64-128KB
+    let mut all_pixels: [[u32; RAINBOW_W]; RAINBOW_H] = [[0; RAINBOW_W]; RAINBOW_H];
+
     for y in 0..RAINBOW_H {
         for x in 0..RAINBOW_W {
             // position along width in [0, segments)
-            let pos = (x * segments) as usize * 256 / (RAINBOW_W.max(1));
-            let seg = (pos / 256).min(segments - 1);
+            let pos = (x * SEGMENTS) * 256 / RAINBOW_W.max(1);
+            let seg = (pos / 256).min(SEGMENTS - 1);
             let t = (pos % 256) as u32; // 0..255
 
             let c0 = STOPS[seg];
@@ -59,10 +57,19 @@ pub fn show_rainbow_test() {
             let gg = (gg * dark) / 255;
             let bb = (bb * dark) / 255;
 
-            pixels[y * RAINBOW_W + x] = (a << 24) | (rr << 16) | (gg << 8) | bb;
+            all_pixels[y][x] = (a << 24) | (rr << 16) | (gg << 8) | bb;
         }
     }
 
+    // Flatten the 2D array to pass to kdraw_canvas
+    // This creates a temporary slice without allocation
+    let flat_pixels: &[u32] = unsafe {
+        core::slice::from_raw_parts(
+            all_pixels.as_ptr() as *const u32,
+            RAINBOW_W * RAINBOW_H
+        )
+    };
+
     // Draw the generated rainbow canvas using global renderer
-    scrolling_text::kdraw_canvas(&pixels, RAINBOW_W, RAINBOW_H);
+    scrolling_text::kdraw_canvas(flat_pixels, RAINBOW_W, RAINBOW_H);
 }

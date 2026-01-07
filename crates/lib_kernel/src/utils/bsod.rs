@@ -1,5 +1,4 @@
 use core::panic::PanicInfo;
-extern crate alloc; // For format! macro
 
 use crate::scrolling_text;
 
@@ -275,16 +274,13 @@ unsafe fn overlay_clean_bsod_text(renderer: &mut scrolling_text::ScrollingTextRe
     
     // Clean technical error info positioned to the right of QR code
     renderer.set_cursor(renderer.get_fb_width() / 12 + 100, renderer.get_fb_height() * 3 / 4 + 20);
-    
-    // Show the actual panic message first
-    let panic_message = alloc::format!("{}", info.message());
-    if !panic_message.is_empty() {
-        use core::fmt::Write;
-        let mut writer_msg = scrolling_text::LineWriter::new();
-        let _ = write!(writer_msg, "Panic: {}", panic_message);
-        writer_msg.write_line();
-        renderer.write_line(b"");
-    }
+
+    // Show the actual panic message first (using stack buffer, NO heap allocation)
+    use core::fmt::Write;
+    let mut writer_msg = scrolling_text::LineWriter::new();
+    let _ = write!(writer_msg, "Panic: {}", info.message());
+    writer_msg.write_line();
+    renderer.write_line(b"");
     
     // Show detailed location information - clean and simple
     if let Some(location) = info.location() {

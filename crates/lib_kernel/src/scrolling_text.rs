@@ -9,13 +9,13 @@
 use core::{any::type_name_of_val, mem::transmute, ptr};
 use crate::font::{draw_string, PsfFont};
 
-extern crate alloc;
-use alloc::boxed::Box;
-
-// Fixed buffer dimensions (heap-allocated)
-// Keep small for bootstrap heap compatibility (renderer created before main heap init)
+// Fixed buffer dimensions (static allocation - no heap needed!)
 const MAX_COLS: usize = 80;   // Maximum characters per line
-const MAX_LINES: usize = 30;   // Small buffer - fits in 64KB bootstrap heap
+const MAX_LINES: usize = 30;   // Small buffer - ~20KB static data
+
+// Static console line buffer (NO heap allocation!)
+// Initialized at compile time with transparent background
+static mut CONSOLE_LINES: [ConsoleLine; MAX_LINES] = [ConsoleLine::new(0x00000000); MAX_LINES];
 
 /// A single character cell with color attributes
 #[derive(Copy, Clone, Debug)]
@@ -95,9 +95,9 @@ impl ConsoleLine {
     }
 }
 
-/// Linux-style framebuffer console with character buffer (heap-allocated to avoid stack overflow)
+/// Linux-style framebuffer console with character buffer (static allocation, NO heap!)
 pub struct ScrollingTextRenderer<'a> {
-    // FIXED-SIZE CHARACTER BUFFER (heap-allocated via Box::leak to avoid stack overflow)
+    // FIXED-SIZE CHARACTER BUFFER (static allocation - NO heap!)
     lines: &'a mut [ConsoleLine; MAX_LINES],
     line_count: usize,          // Number of lines currently in buffer
     start_line: usize,          // Index of first line (ring buffer)
@@ -158,14 +158,16 @@ impl<'a> ScrollingTextRenderer<'a> {
 
         let bg_color = 0x00000000;
 
-        // Allocate lines buffer on HEAP to avoid stack overflow during early boot
-        // The allocator MUST be initialized before calling this function!
-        let mut lines = Box::new([ConsoleLine::new(bg_color); MAX_LINES]);
-        for line in lines.iter_mut() {
-            line.set_width(cols.min(MAX_COLS));
-        }
-        // Leak the box to get a 'static reference (never freed, lives forever)
-        let lines: &'static mut [ConsoleLine; MAX_LINES] = Box::leak(lines);
+        // Use static CONSOLE_LINES buffer (NO heap allocation!)
+        // Initialize the static buffer with the correct width
+        let lines: &'static mut [ConsoleLine; MAX_LINES] = unsafe {
+            // Reset all lines to default state with correct width
+            for line in CONSOLE_LINES.iter_mut() {
+                *line = ConsoleLine::new(bg_color);
+                line.set_width(cols.min(MAX_COLS));
+            }
+            &mut CONSOLE_LINES
+        };
 
         // Start with one visible screen of lines
         let initial_lines = rows.min(MAX_LINES);
