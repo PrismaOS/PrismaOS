@@ -437,7 +437,8 @@ impl Attribute {
             }
             AttributeData::NonResident { runs, allocated_size, real_size, initialized_size } => {
                 let runs_size = runs.len() * 16 + 1;
-                buf.resize(offset + 40 + runs_size, 0);
+                // Header is 48 bytes (8+8+2+2+4+8+8+8), not 40
+                buf.resize(offset + 48 + runs_size, 0);
                 buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
                 offset += 8;
                 buf[offset..offset+8].copy_from_slice(&0u64.to_le_bytes());
