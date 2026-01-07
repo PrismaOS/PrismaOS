@@ -76,6 +76,27 @@ unsafe extern "C" fn kmain() -> ! {
         }
     }
 
+    // Test the new logging system with all log levels
+    // TEMPORARILY DISABLED to debug triple fault
+    /*
+    kprintln!("");
+    kprintln!("=== Testing Kernel Logging System ===");
+    lib_kernel::log_trace!("TRACE: Very detailed debugging information");
+    lib_kernel::log_debug!("DEBUG: General debugging information");
+    lib_kernel::log_info!("INFO: Normal operational information");
+    lib_kernel::log_warn!("WARN: Warning - potential issue detected");
+    lib_kernel::log_error!("ERROR: Recoverable error occurred");
+    lib_kernel::log_critical!("CRITICAL: Severe error requiring attention");
+    lib_kernel::log_info!("Testing with variables: x={}, y={}, str={}", 42, 123, "hello");
+
+    // Show logging statistics
+    let logger = lib_kernel::logger::get_logger();
+    let (total, dropped) = logger.stats();
+    lib_kernel::log_info!("Logger statistics: {} total logs, {} dropped", total, dropped);
+    kprintln!("=== Logging System Test Complete ===");
+    kprintln!("");
+    */
+
     // Init PCI dirver
     kprintln!("PciAccess {:?}", init_pci());
 

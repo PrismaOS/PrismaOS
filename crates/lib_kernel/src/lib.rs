@@ -5,6 +5,7 @@
 extern crate alloc;
 
 pub mod scrolling_text;
+pub mod logger;
 pub mod interrupts;
 pub mod scheduler;
 pub mod executor;

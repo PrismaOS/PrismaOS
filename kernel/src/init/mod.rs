@@ -30,6 +30,9 @@ pub fn init_kernel() -> Result<(), &'static str> {
     // The framebuffer renderer uses VecDeque which requires the allocator to be ready
     init_memory_and_heap()?;
 
+    // NOTE: Logger init temporarily disabled to debug triple fault
+    // lib_kernel::logger::init_logger();
+
     match init_framebuffer_and_renderer() {
         Ok(Some(mut fbctx)) => {
             fbctx.write_line("Initializing kernel subsystems...");
