@@ -338,7 +338,7 @@ impl IndexNode {
         size
     }
 
-    fn update_header(&mut self) {
+    pub fn update_header(&mut self) {
         self.header.index_length = self.calculate_size() as u32;
     }
 

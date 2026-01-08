@@ -325,6 +325,7 @@ pub struct GalleonFilesystem {
 impl GalleonFilesystem {
     /// Create a new filesystem on the specified drive
     pub fn format(drive: u8) -> FilesystemResult<Self> {
+        kprintln!("!!! FORMAT WAS CALLED !!!");
         kprintln!("Format was called!");
         kprintln!("Getting drive size for drive {}...", drive);
         let disk_size_bytes = return_drive_size_bytes(drive)?;
@@ -427,6 +428,7 @@ impl GalleonFilesystem {
 
     /// Mount an existing filesystem
     pub fn mount(drive: u8) -> FilesystemResult<Self> {
+        kprintln!("!!! MOUNT WAS CALLED !!!");
         kprintln!("Mount!");
         kprintln!("Starting filesystem mount for drive {}", drive);
 
@@ -549,24 +551,53 @@ impl GalleonFilesystem {
         kprintln!("Verifying B-tree root node...");
         kprintln!("DEBUG: index_allocation_start = {}", super_block.index_allocation_start);
         kprintln!("DEBUG: cluster_size = {}", super_block.cluster_size);
+        let mut needs_init = false;
         match btree_manager.read_node(0) {
             Ok(node) => {
-                kprintln!("B-tree root node is valid");
+                kprintln!("B-tree root node found");
+                kprintln!("Root node flags = {} (0=leaf, 1=internal)", node.header.flags);
                 kprintln!("Root node has {} entries", node.entries.len());
+
+                // Check if it's a valid leaf node (flags should be 0 for root)
+                if !node.header.is_leaf() {
+                    kprintln!("WARNING: B-tree root has wrong flags (expected leaf, got internal)");
+                    kprintln!("Reinitializing B-tree root with correct flags...");
+                    needs_init = true;
+                }
             }
             Err(e) => {
                 kprintln!("B-tree root invalid or missing: {:?}", e);
-                kprintln!("Initializing B-tree root node...");
-                Self::initialize_btree_root(&btree_manager)?;
-                kprintln!("B-tree root node initialized");
-                
-                // Verify it was written correctly
-                kprintln!("Verifying initialization...");
-                match btree_manager.read_node(0) {
-                    Ok(node) => kprintln!("Verification successful, {} entries", node.entries.len()),
-                    Err(e) => kprintln!("Verification FAILED: {:?}", e),
+                needs_init = true;
+            }
+        }
+
+        if needs_init {
+            kprintln!("!!! CALLING initialize_btree_root !!!");
+            match Self::initialize_btree_root(&btree_manager) {
+                Ok(()) => {
+                    kprintln!("!!! initialize_btree_root returned Ok !!!");
+                }
+                Err(e) => {
+                    kprintln!("!!! initialize_btree_root FAILED: {:?} !!!", e);
+                    return Err(e);
                 }
             }
+
+            // Verify it was written correctly
+            kprintln!("Verifying initialization...");
+            match btree_manager.read_node(0) {
+                Ok(node) => {
+                    kprintln!("Verification successful!");
+                    kprintln!("  Flags: {} (should be 0 for leaf)", node.header.flags);
+                    kprintln!("  Entries: {}", node.entries.len());
+                }
+                Err(e) => {
+                    kprintln!("Verification FAILED: {:?}", e);
+                    return Err(e);
+                }
+            }
+        } else {
+            kprintln!("!!! Skipping B-tree init (needs_init=false) !!!");
         }
 
         kprintln!("Filesystem mount completed successfully!");
@@ -602,28 +633,26 @@ impl GalleonFilesystem {
 
     fn initialize_btree_root(btree_manager: &BTreeManager) -> FilesystemResult<()> {
         kprintln!("Creating empty B-tree root node...");
-        
-        // Create an empty root node
-        use crate::btree::{IndexNode, IndexHeader, IndexEntry, INDEX_NODE_SIZE};
-        
-        let header = IndexHeader {
-            signature: *b"INDX",
-            entries_offset: 32,
-            index_length: 56, // Header (32) + one empty entry (24)
-            allocated_size: INDEX_NODE_SIZE as u32,
-            flags: 1, // Leaf node
-            sequence_number: 0,
-        };
-        
-        // Create a terminal entry (last entry marker)
-        let terminal_entry = IndexEntry::new_end_marker();
-        
-        let root_node = IndexNode {
-            header,
-            entries: alloc::vec![terminal_entry],
-            vcn: 0,
-        };
-        
+
+        // Create an empty root node using the proper constructor
+        use crate::btree::IndexNode;
+
+        let mut root_node = IndexNode::new_leaf(0); // vcn=0 for root
+
+        kprintln!("  Before update_header:");
+        kprintln!("    index_length = {}", root_node.header.index_length);
+        kprintln!("    flags = {}", root_node.header.flags);
+        kprintln!("    entries.len() = {}", root_node.entries.len());
+
+        // CRITICAL: Update the header to include the correct index_length
+        // Without this, the header.index_length is just 32 (header size) and
+        // doesn't include the end marker entry, causing deserialization to fail!
+        root_node.update_header();
+
+        kprintln!("  After update_header:");
+        kprintln!("    index_length = {}", root_node.header.index_length);
+        kprintln!("    signature = {:?}", core::str::from_utf8(&root_node.header.signature).unwrap_or("INVALID"));
+
         btree_manager.write_node(&root_node)?;
         kprintln!("B-tree root node initialized successfully");
         Ok(())
@@ -717,6 +746,17 @@ impl GalleonFilesystem {
     }
 
     /// Get filesystem statistics
+    /// Get B-tree diagnostic information (for debugging)
+    pub fn get_btree_diag(&self) -> (u64, u32, u64, u64, u8) {
+        let index_allocation_start = self.super_block.index_allocation_start;
+        let cluster_size = self.super_block.cluster_size;
+        let cluster_num = index_allocation_start + 0; // vcn=0 for root
+        let sector_start = cluster_num * (cluster_size / 512) as u64;
+        let sectors_per_node: u8 = 8; // 4096 / 512 = 8 sectors
+
+        (index_allocation_start, cluster_size, cluster_num, sector_start, sectors_per_node)
+    }
+
     pub fn get_stats(&mut self) -> FilesystemResult<FilesystemStats> {
         kprintln!("Getting filesystem statistics");
         let free_space = self.allocator.get_free_space()?;

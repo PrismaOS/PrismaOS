@@ -69,11 +69,18 @@ pub fn init() {
     kprintln!("===========================================");
     kprintln!("Type 'help' for available commands");
     kprintln!();
-    
+
+    // Run diagnostics first to see B-tree state
+    kprintln!();
+    kprintln!("=== B-TREE DIAGNOSTICS ===");
+    cmd_btree_diag(&[]);
+    kprintln!("=== END DIAGNOSTICS ===");
+    kprintln!();
+
     // Run initial ls command on startup
     cmd_ls(&[]);
     kprintln!();
-    
+
     print_prompt();
 }
 
@@ -366,8 +373,18 @@ fn cmd_ls(args: &[&str]) -> CommandResult {
                 CommandResult::Success
             }
             Err(e) => {
-                kprintln!("  (filesystem B-tree not initialized - showing empty)");
-                kprintln!("  Debug: Error was {:?}", e);
+                kprintln!("  Error listing directory: {:?}", e);
+                kprintln!();
+                kprintln!("  Attempting to read B-tree root directly for diagnostics...");
+                // Try to read the raw B-tree data to see what's actually there
+                crate::with_filesystem(|fs| {
+                    use galleon2::btree::BTreeManager;
+                    // Access the btree_manager through the filesystem
+                    // This is a workaround since we can't access it directly
+                    kprintln!("  (Unable to access B-tree manager directly from shell)");
+                    kprintln!("  Suggestion: The B-tree may not have been initialized during mount/format.");
+                    kprintln!("  Check if you see 'B-tree root node initialized successfully' during boot.");
+                });
                 CommandResult::Success
             }
         }
@@ -407,6 +424,82 @@ fn cmd_reboot(_args: &[&str]) -> CommandResult {
 
 fn cmd_panic(_args: &[&str]) -> CommandResult {
     panic!("User-initiated panic from shell");
+}
+
+fn cmd_btree_diag(_args: &[&str]) -> CommandResult {
+    kprintln!("B-tree Diagnostic Information");
+    kprintln!("==============================");
+    kprintln!();
+
+    if let Some(_) = crate::with_filesystem(|fs| {
+        use ide::ide_read_sectors;
+
+        // Get B-tree diagnostic info from filesystem
+        let (index_allocation_start, cluster_size, cluster_num, sector_start, sectors_per_node) =
+            fs.get_btree_diag();
+
+        kprintln!("Filesystem configuration:");
+        kprintln!("  index_allocation_start = {}", index_allocation_start);
+        kprintln!("  cluster_size = {} bytes", cluster_size);
+        kprintln!("  B-tree root location:");
+        kprintln!("    cluster_num = {}", cluster_num);
+        kprintln!("    sector_start = {}", sector_start);
+        kprintln!("    sectors = {}", sectors_per_node);
+        kprintln!();
+
+        let mut node_data = alloc::vec![0u8; 4096];
+        match ide_read_sectors(0, sectors_per_node, sector_start as u32, &mut node_data) {
+            Ok(()) => {
+                kprintln!("Raw B-tree root data:");
+                kprintln!("  First 64 bytes: {:02x?}", &node_data[0..64]);
+                kprintln!();
+
+                // Try to parse the header
+                if node_data[0..4] == [0x49, 0x4E, 0x44, 0x58] { // "INDX"
+                    kprintln!("  Signature: INDX (valid)");
+                    let entries_offset = u32::from_le_bytes([node_data[4], node_data[5], node_data[6], node_data[7]]);
+                    let index_length = u32::from_le_bytes([node_data[8], node_data[9], node_data[10], node_data[11]]);
+                    let allocated_size = u32::from_le_bytes([node_data[12], node_data[13], node_data[14], node_data[15]]);
+                    let flags = node_data[16];
+
+                    kprintln!("  entries_offset = {}", entries_offset);
+                    kprintln!("  index_length = {}", index_length);
+                    kprintln!("  allocated_size = {}", allocated_size);
+                    kprintln!("  flags = {} (0=leaf, 1=internal)", flags);
+                } else if node_data[0..16].iter().all(|&b| b == 0xFF) {
+                    kprintln!("  Signature: ALL 0xFF (uninitialized!)");
+                } else if node_data[0..16].iter().all(|&b| b == 0x00) {
+                    kprintln!("  Signature: ALL 0x00 (zeroed/empty!)");
+                } else {
+                    kprintln!("  Signature: {:02x?} (INVALID - expected INDX)", &node_data[0..4]);
+                }
+
+                // If uninitialized, try to initialize it now!
+                if node_data[0..16].iter().all(|&b| b == 0xFF) {
+                    kprintln!();
+                    kprintln!("!!! B-tree is uninitialized, attempting to initialize NOW !!!");
+
+                    // Try to reinitialize by calling the filesystem
+                    if let Some(_) = crate::with_filesystem(|_fs| {
+                        // We can't directly call initialize_btree_root from here
+                        // But we can try to trigger it by attempting a write
+                        kprintln!("  (Cannot directly call initialize from shell, needs mount/format)");
+                    }) {
+                        kprintln!("  Suggestion: The B-tree should be initialized during mount/format.");
+                        kprintln!("  Check boot messages for '!!! CALLING initialize_btree_root !!!'");
+                    }
+                }
+            }
+            Err(e) => {
+                kprintln!("  ERROR: Failed to read B-tree data: {:?}", e);
+            }
+        }
+    }) {
+        CommandResult::Success
+    } else {
+        kprintln!("Filesystem not available!");
+        CommandResult::Error
+    }
 }
 
 /// All built-in commands (static, compile-time constant)
@@ -482,5 +575,11 @@ const BUILTIN_COMMANDS: &[Command] = &[
         description: "Trigger a kernel panic (for testing)",
         usage: "panic",
         handler: cmd_panic,
+    },
+    Command {
+        name: "btree-diag",
+        description: "Show B-tree diagnostic information",
+        usage: "btree-diag",
+        handler: cmd_btree_diag,
     },
 ];
