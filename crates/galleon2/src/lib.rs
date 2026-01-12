@@ -266,7 +266,8 @@ mod integration_tests {
         assert!(record.verify_checksum());
 
         // Test serialization
-        let serialized = record.serialize();
+        let mut serialized = Vec::new();
+        record.serialize(&mut serialized);
         let deserialized = journal::LogRecord::deserialize(&serialized).unwrap();
 
         assert_eq!(deserialized.sequence_number, 1);

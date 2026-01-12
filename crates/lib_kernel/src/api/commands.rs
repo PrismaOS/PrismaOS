@@ -201,7 +201,13 @@ pub unsafe fn outw(port: u16, value: u16) {
 /// - This function performs raw hardware port writes and is only safe in privileged (kernel or bootloader) contexts.
 #[inline]
 pub unsafe fn outsw(port: u16, buffer: *const u16, count: u32) {
-    for i in 0..count {
-        unsafe { outw(port, *buffer.add(i as usize)) };
+    unsafe {
+        asm!(
+            "rep outsw",
+            in("dx") port,
+            in("rsi") buffer,
+            in("rcx") count as u64,
+            options(nostack, preserves_flags)
+        );
     }
 }

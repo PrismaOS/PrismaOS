@@ -186,29 +186,6 @@ mod tests {
         assert_eq!(deserialized.parent_directory, 5);
     }
 
-    #[test]
-    fn test_journal_operations() {
-        use crate::journal::{LogRecord, OperationType};
-
-        let record = LogRecord::new(
-            1,
-            OperationType::CreateFile,
-            42,
-            b"undo_data".to_vec(),
-            b"redo_data".to_vec(),
-        );
-
-        assert!(record.verify_checksum());
-
-        let serialized = record.serialize();
-        let deserialized = LogRecord::deserialize(&serialized).unwrap();
-
-        assert_eq!(deserialized.sequence_number, 1);
-        assert_eq!(deserialized.operation_type, OperationType::CreateFile);
-        assert_eq!(deserialized.target_file_record, 42);
-        assert!(deserialized.verify_checksum());
-    }
-
     // Integration test helper functions
     fn create_mock_filesystem() -> GalleonFilesystem {
         // This would require proper mock IDE interface for real testing
@@ -241,24 +218,6 @@ mod tests {
         // Delete the file
         fs.delete_file(file_record, "test.txt").unwrap();
         assert!(fs.find_file("test.txt").unwrap().is_none());
-    }
-
-    #[test]
-    #[ignore] // Ignore until we have proper mock IDE interface
-    fn test_directory_operations() {
-        let mut fs = create_mock_filesystem();
-
-        // Create a directory
-        let dir_record = fs.create_directory(5, "testdir".to_string()).unwrap();
-
-        // Create files in the directory
-        let file1 = fs.create_file(dir_record, "file1.txt".to_string(), Some(b"Data1".to_vec())).unwrap();
-        let file2 = fs.create_file(dir_record, "file2.txt".to_string(), Some(b"Data2".to_vec())).unwrap();
-
-        // List directory contents
-        let contents = fs.list_directory().unwrap();
-        assert!(contents.iter().any(|(name, _)| name == "file1.txt"));
-        assert!(contents.iter().any(|(name, _)| name == "file2.txt"));
     }
 
     #[test]

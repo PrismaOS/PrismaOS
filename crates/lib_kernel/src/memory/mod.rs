@@ -8,7 +8,9 @@ use x86_64::{
 
 pub mod allocator;
 pub mod paging;
+pub mod addr;
 pub mod dma;
+pub mod frame_allocator;
 //pub mod mmio;
 
 pub use allocator::{init_heap, HEAP_SIZE, HEAP_START, heap_stats};
@@ -16,6 +18,7 @@ pub use allocator::{init_heap, HEAP_SIZE, HEAP_START, heap_stats};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameAllocatorError;
+
 
 pub struct BootInfoFrameAllocator {
     memory_regions: [Option<(PhysAddr, PhysAddr)>; 16], // Max 16 memory regions
@@ -135,14 +138,18 @@ unsafe impl FrameAllocator<x86_64::structures::paging::Size4KiB> for BootInfoFra
     }
 }
 
-pub fn init_memory(
-    memory_map: &[&limine::memory_map::Entry],
-    physical_memory_offset: VirtAddr,
-) -> (impl Mapper<x86_64::structures::paging::Size4KiB>, BootInfoFrameAllocator) {
+pub fn init_memory(memory_map: &limine::response::MemoryMapResponse) -> (paging::OSMapper, frame_allocator::FrameAllocator) {
     unsafe {
-        let level_4_table = paging::init(physical_memory_offset);
-        let frame_allocator = BootInfoFrameAllocator::init(memory_map);
-        (level_4_table, frame_allocator)
+
+        let frame_allocator = frame_allocator::FrameAllocator::init(memory_map);
+        paging::VMM::init(memory_map);
+        
+        let mut mapper = paging::VMM::get_mapper();
+        let mut frame_alloc = frame_allocator;
+        
+        init_heap(&mut mapper, &mut frame_alloc).expect("Heap initialization failed");
+        
+        (mapper, frame_alloc)
     }
 }
 

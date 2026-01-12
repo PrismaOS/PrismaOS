@@ -228,6 +228,12 @@ pub fn ide_write_sectors(
 
         // Write all sectors in one bulk operation
         let total_words = (numsects as u32) * 256; // 256 words per sector
+
+        // DEBUG: Check first 16 bytes before writing
+        if buf.len() >= 16 {
+            kprintln!("IDE WRITE DEBUG: First 16 bytes of buffer: {:02x?}", &buf[0..16]);
+        }
+
         outsw(bus, buf.as_ptr() as *const u16, total_words);
 
         // Fast cache flush

@@ -438,13 +438,10 @@ fn cmd_btree_diag(_args: &[&str]) -> CommandResult {
         let (index_allocation_start, cluster_size, cluster_num, sector_start, sectors_per_node) =
             fs.get_btree_diag();
 
-        kprintln!("Filesystem configuration:");
-        kprintln!("  index_allocation_start = {}", index_allocation_start);
-        kprintln!("  cluster_size = {} bytes", cluster_size);
-        kprintln!("  B-tree root location:");
-        kprintln!("    cluster_num = {}", cluster_num);
-        kprintln!("    sector_start = {}", sector_start);
-        kprintln!("    sectors = {}", sectors_per_node);
+        kprintln!("Filesystem layout:");
+        kprintln!();
+        kprintln!("B-tree root location:");
+        kprintln!("  cluster: {}, sector: {}", cluster_num, sector_start);
         kprintln!();
 
         let mut node_data = alloc::vec![0u8; 4096];
@@ -474,21 +471,6 @@ fn cmd_btree_diag(_args: &[&str]) -> CommandResult {
                     kprintln!("  Signature: {:02x?} (INVALID - expected INDX)", &node_data[0..4]);
                 }
 
-                // If uninitialized, try to initialize it now!
-                if node_data[0..16].iter().all(|&b| b == 0xFF) {
-                    kprintln!();
-                    kprintln!("!!! B-tree is uninitialized, attempting to initialize NOW !!!");
-
-                    // Try to reinitialize by calling the filesystem
-                    if let Some(_) = crate::with_filesystem(|_fs| {
-                        // We can't directly call initialize_btree_root from here
-                        // But we can try to trigger it by attempting a write
-                        kprintln!("  (Cannot directly call initialize from shell, needs mount/format)");
-                    }) {
-                        kprintln!("  Suggestion: The B-tree should be initialized during mount/format.");
-                        kprintln!("  Check boot messages for '!!! CALLING initialize_btree_root !!!'");
-                    }
-                }
             }
             Err(e) => {
                 kprintln!("  ERROR: Failed to read B-tree data: {:?}", e);

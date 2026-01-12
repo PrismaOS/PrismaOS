@@ -23,6 +23,7 @@
 #![allow(warnings)]
 
 use alloc::string::{String, ToString};
+use limine::request::{MemoryMapRequest, RequestsEndMarker, RequestsStartMarker};
 use core::panic::PanicInfo;
 use alloc::boxed::Box;
 use lib_kernel::{ consts::BASE_REVISION, kprintln, scrolling_text };
@@ -59,7 +60,7 @@ where
     let guard = GLOBAL_FILESYSTEM.lock();
     guard.as_ref().map(|fs| f(*fs))
 }
-
+/// 
 // NOTE: speaker and other modules are available as `crate::speaker` if
 /// needed; avoid glob imports here to keep the top-level clean.
 
