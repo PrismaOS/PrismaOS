@@ -1,297 +1,165 @@
-//! Comprehensive USB Host Controller Driver for PrismaOS
-//!
-//! This driver provides a complete USB 3.0/2.0/1.1 host controller implementation
-//! using modular architecture with xHCI backend support. It handles device
-//! enumeration, configuration, transfer management, hub support, and USB class drivers.
-
 #![no_std]
-#![allow(dead_code)]
 
-extern crate alloc;
+use lib_kernel::println;
+use lib_kernel::memory;
+use pci;
+use xhci;
 
-use alloc::{boxed::Box, vec::Vec, collections::BTreeMap, sync::Arc};
-use core::{
-    fmt,
-    sync::atomic::{AtomicU8, Ordering},
-};
-use spin::{Mutex, RwLock};
-use xhci::accessor::Mapper;
+#[derive(Clone, Copy)]
+pub struct UsbMapper(pub memory::paging::OSMapper);
 
-pub mod error;
-pub mod device;
-pub mod endpoint;
-pub mod transfer;
-pub mod hub;
-pub mod class;
-pub mod descriptor;
-pub mod controller;
-pub mod memory;
-pub mod async_ops;
+impl xhci::accessor::Mapper for UsbMapper {
+    unsafe fn map(&mut self, phys_start: usize, bytes: usize) -> core::num::NonZeroUsize {
+        const HHDM_OFFSET: u64 = 0xFFFF_8000_0000_0000;
+        let phys_u64 = phys_start as u64;
+        let virt_u64 = phys_u64 | HHDM_OFFSET;
+        let virt = memory::addr::VirtAddr::new(virt_u64);
+        let phys = memory::addr::PhysAddr::new(phys_u64);
+        let flags = memory::paging::PageTableEntry::WRITABLE;
 
-pub use error::UsbDriverError;
-pub use device::{UsbDevice, DeviceState, DeviceClass};
-pub use endpoint::{EndpointType, EndpointDirection, Endpoint};
-pub use transfer::{TransferType, Transfer, TransferBuffer};
-pub use hub::{UsbHub, PortStatus};
-pub use class::{UsbClassDriver, ClassType};
-pub use controller::{UsbController, ControllerState};
+        unsafe { self.0.map_range(virt, phys, bytes, flags).expect("UsbMapper: map_range failed") };
+        unsafe { core::num::NonZeroUsize::new_unchecked(virt_u64 as usize) }
+    }
 
-/// USB Driver result type
-pub type Result<T> = core::result::Result<T, UsbDriverError>;
-
-/// USB Host Controller Driver
-pub struct UsbHostDriver {
-    /// xHCI controller instance
-    controller: Arc<Mutex<UsbController>>,
-    /// Connected devices
-    devices: Arc<RwLock<BTreeMap<u8, Arc<Mutex<UsbDevice>>>>>,
-    /// Root hub
-    root_hub: Arc<Mutex<UsbHub>>,
-    /// Class drivers
-    class_drivers: Arc<RwLock<Vec<Box<dyn UsbClassDriver + Send + Sync>>>>,
-    /// Memory allocator for USB operations
-    memory_allocator: Arc<Mutex<memory::UsbMemoryAllocator>>,
-    /// Driver state
-    state: Arc<AtomicU8>,
-}
-
-/// USB driver state
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DriverState {
-    Uninitialized = 0,
-    Initializing = 1,
-    Running = 2,
-    Suspended = 3,
-    Error = 4,
-}
-
-impl From<u8> for DriverState {
-    fn from(value: u8) -> Self {
-        match value {
-            0 => DriverState::Uninitialized,
-            1 => DriverState::Initializing,
-            2 => DriverState::Running,
-            3 => DriverState::Suspended,
-            _ => DriverState::Error,
-        }
+    fn unmap(&mut self, virt_start: usize, bytes: usize) {
+        let virt = memory::addr::VirtAddr::new(virt_start as u64);
+        unsafe { self.0.unmap_range(virt, bytes) };
     }
 }
 
-impl UsbHostDriver {
-    /// Create a new USB host driver instance
-    pub fn new<M: Mapper + Clone + Send + Sync + 'static>(
-        mmio_base: usize,
-        mapper: M,
-    ) -> Result<Self> {
-        let controller = UsbController::new(mmio_base, mapper)?;
-        let memory_allocator = memory::UsbMemoryAllocator::new()?;
-        let root_hub = UsbHub::new_root_hub()?;
+pub fn init_usb() {
+    let mapper = unsafe { memory::paging::VMM::get_mapper() };
+    let mapper = UsbMapper(mapper);
+    let mut phys_base: u64;
+    match pci::pci_find_xhci_controller() {
+        Some(device) => {
+            println!("Found XHCI controller at bus {}, device {}, function {}", device.bus, device.device, device.function);
+            pci::pci_enable_memory_space(device.bus, device.device, device.function);
+            pci::pci_enable_bus_master(device.bus, device.device, device.function);
 
-        Ok(Self {
-            controller: Arc::new(Mutex::new(controller)),
-            devices: Arc::new(RwLock::new(BTreeMap::new())),
-            root_hub: Arc::new(Mutex::new(root_hub)),
-            class_drivers: Arc::new(RwLock::new(Vec::new())),
-            memory_allocator: Arc::new(Mutex::new(memory_allocator)),
-            state: Arc::new(AtomicU8::new(DriverState::Uninitialized as u8)),
-        })
-    }
-
-    /// Initialize the USB host driver
-    pub async fn initialize(&self) -> Result<()> {
-        self.state.store(DriverState::Initializing as u8, Ordering::SeqCst);
-
-        // Initialize controller
-        {
-            let mut controller = self.controller.lock();
-            controller.initialize().await?;
-        }
-
-        // Initialize root hub
-        {
-            let mut root_hub = self.root_hub.lock();
-            root_hub.initialize().await?;
-        }
-
-        // Start device enumeration
-        self.enumerate_devices().await?;
-
-        self.state.store(DriverState::Running as u8, Ordering::SeqCst);
-        Ok(())
-    }
-
-    /// Get current driver state
-    pub fn state(&self) -> DriverState {
-        DriverState::from(self.state.load(Ordering::Acquire))
-    }
-
-    /// Register a USB class driver
-    pub fn register_class_driver(&self, driver: Box<dyn UsbClassDriver + Send + Sync>) {
-        let mut drivers = self.class_drivers.write();
-        drivers.push(driver);
-    }
-
-    /// Enumerate all connected USB devices
-    pub async fn enumerate_devices(&self) -> Result<()> {
-        let mut root_hub = self.root_hub.lock();
-        let port_count = root_hub.port_count();
-
-        for port in 0..port_count {
-            if let Some(device) = root_hub.probe_port(port).await? {
-                self.add_device(device).await?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Add a newly discovered device
-    async fn add_device(&self, mut device: UsbDevice) -> Result<()> {
-        // Configure device
-        device.configure().await?;
-
-        // Find appropriate class driver
-        let device_address = device.address();
-        let class_drivers = self.class_drivers.read();
-        for driver in class_drivers.iter() {
-            if driver.supports_device(&device) {
-                driver.attach_device(device_address).await?;
-                break;
-            }
-        }
-
-        // Store device
-        let mut devices = self.devices.write();
-        devices.insert(device_address, Arc::new(Mutex::new(device)));
-
-        Ok(())
-    }
-
-    /// Remove a disconnected device
-    pub async fn remove_device(&self, address: u8) -> Result<()> {
-        let mut devices = self.devices.write();
-        if let Some(device_arc) = devices.remove(&address) {
-            let device = device_arc.lock();
-
-            // Notify class drivers
-            let class_drivers = self.class_drivers.read();
-            for driver in class_drivers.iter() {
-                if driver.supports_device(&device) {
-                    driver.detach_device(address).await?;
-                    break;
+            let bar0 = pci::pci_read_bar(device.bus, device.device, device.function, 0);
+            if bar0 & 0x1 != 0 {
+                return;
+            } else {
+                let bar_type = (bar0 >> 1) & 0x3;
+                phys_base = (bar0 & 0xFFFFFFF0) as u64;
+                if bar_type == 0x2 {
+                    let bar1 = pci::pci_read_bar(device.bus, device.device, device.function, 1);
+                    phys_base |= (bar1 as u64) << 32;
                 }
             }
         }
-
-        Ok(())
-    }
-
-    /// Get device by address
-    pub fn get_device(&self, address: u8) -> Option<Arc<Mutex<UsbDevice>>> {
-        let devices = self.devices.read();
-        devices.get(&address).cloned()
-    }
-
-    /// Submit a USB transfer
-    pub async fn submit_transfer(&self, transfer: Transfer) -> Result<usize> {
-        let mut controller = self.controller.lock();
-        controller.submit_transfer(transfer).await
-    }
-
-    /// Handle USB events (called from interrupt handler)
-    pub async fn handle_events(&self) -> Result<()> {
-        let mut controller = self.controller.lock();
-        let events = controller.poll_events().await?;
-
-        for event in events {
-            match event {
-                controller::UsbEvent::DeviceConnected { port } => {
-                    // Handle device connection
-                    let mut root_hub = self.root_hub.lock();
-                    if let Some(device) = root_hub.probe_port(port).await? {
-                        self.add_device(device).await?;
-                    }
-                }
-                controller::UsbEvent::DeviceDisconnected { address } => {
-                    // Handle device disconnection
-                    self.remove_device(address).await?;
-                }
-                controller::UsbEvent::TransferComplete { transfer_id, status } => {
-                    // Handle transfer completion
-                    controller.complete_transfer(transfer_id, status).await?;
-                }
-                controller::UsbEvent::Error { error } => {
-                    // Handle error
-                    log::error!("USB Error: {:?}", error);
-                }
-            }
+        None => {
+            println!("No XHCI controller found");
+            return;
         }
-
-        Ok(())
     }
 
-    /// Suspend the USB driver
-    pub async fn suspend(&self) -> Result<()> {
-        self.state.store(DriverState::Suspended as u8, Ordering::SeqCst);
+    let mut xhci_regs = unsafe { xhci::Registers::new(phys_base as usize, mapper) };
+    let xhci_operational_regs = &mut xhci_regs.operational;
+    xhci_operational_regs.usbcmd.update_volatile(|u| {
+        u.clear_run_stop();
+    });
+    while !xhci_operational_regs.usbsts.read_volatile().hc_halted() {}
 
-        let mut controller = self.controller.lock();
-        controller.suspend().await?;
+    xhci_operational_regs.usbcmd.update_volatile(|u| {
+        u.set_host_controller_reset();
+    });
+    while xhci_operational_regs.usbcmd.read_volatile().host_controller_reset() {}
+    while !xhci_operational_regs.usbsts.read_volatile().hc_halted() {}
+    const RING_PAGES: usize = 1;
+    const PAGE_SIZE: usize = 0x1000;
 
-        Ok(())
-    }
-
-    /// Resume the USB driver
-    pub async fn resume(&self) -> Result<()> {
-        let mut controller = self.controller.lock();
-        controller.resume().await?;
-
-        self.state.store(DriverState::Running as u8, Ordering::SeqCst);
-        Ok(())
-    }
-
-    /// Shutdown the USB driver
-    pub async fn shutdown(&self) -> Result<()> {
-        // Remove all devices
-        let mut devices = self.devices.write();
-        let addresses: Vec<u8> = devices.keys().cloned().collect();
-        for address in addresses {
-            if let Some(_device) = devices.remove(&address) {
-                // Notify class drivers about device removal
-                let class_drivers = self.class_drivers.read();
-                for driver in class_drivers.iter() {
-                    // Attempt to detach without handling errors during shutdown
-                    let _ = driver.detach_device(address).await;
-                }
-            }
+    let mut cmd_phys = None;
+    let mut evt_phys = None;
+    for _ in 0..RING_PAGES {
+        let f = unsafe { memory::frame_allocator::FrameAllocator::alloc_frame() };
+        if cmd_phys.is_none() {
+            cmd_phys = f;
+        } else if evt_phys.is_none() {
+            evt_phys = f;
         }
-
-        // Shutdown controller
-        let mut controller = self.controller.lock();
-        controller.shutdown().await?;
-
-        self.state.store(DriverState::Uninitialized as u8, Ordering::SeqCst);
-        Ok(())
     }
-}
 
-unsafe impl Send for UsbHostDriver {}
-unsafe impl Sync for UsbHostDriver {}
+    let cmd_phys = match cmd_phys {
+        Some(p) => p,
+        None => {
+            println!("Failed to allocate command ring frame");
+            return;
+        }
+    };
 
-impl fmt::Debug for UsbHostDriver {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UsbHostDriver")
-            .field("state", &self.state())
-            .finish()
+    let evt_phys = match evt_phys {
+        Some(p) => p,
+        None => {
+            println!("Failed to allocate event ring frame");
+            return;
+        }
+    };
+
+    const HHDM_OFFSET: u64 = 0xFFFF_8000_0000_0000;
+    let cmd_virt = (cmd_phys.as_u64() | HHDM_OFFSET) as usize;
+    let evt_virt = (evt_phys.as_u64() | HHDM_OFFSET) as usize;
+
+    let mut inner_mapper = mapper.0;
+    unsafe {
+        let _ = inner_mapper.map_range(memory::addr::VirtAddr::new(cmd_virt as u64), memory::addr::PhysAddr::new(cmd_phys.as_u64()), PAGE_SIZE, memory::paging::PageTableEntry::WRITABLE);
+        let _ = inner_mapper.map_range(memory::addr::VirtAddr::new(evt_virt as u64), memory::addr::PhysAddr::new(evt_phys.as_u64()), PAGE_SIZE, memory::paging::PageTableEntry::WRITABLE);
     }
-}
 
-/// Initialize the USB subsystem
-pub async fn init_usb_subsystem<M: Mapper + Clone + Send + Sync + 'static>(
-    mmio_base: usize,
-    mapper: M,
-) -> Result<Arc<UsbHostDriver>> {
-    let driver = Arc::new(UsbHostDriver::new(mmio_base, mapper)?);
-    driver.initialize().await?;
-    Ok(driver)
+    println!("Command ring phys=0x{:x} virt=0x{:x}", cmd_phys.as_u64(), cmd_virt);
+    println!("Event ring phys=0x{:x} virt=0x{:x}", evt_phys.as_u64(), evt_virt);
+
+    xhci_operational_regs.usbcmd.update_volatile(|u| {
+        u.set_run_stop();
+    });
+
+    while xhci_operational_regs.usbsts.read_volatile().hc_halted() {}
+    let erst_phys = match unsafe { memory::frame_allocator::FrameAllocator::alloc_frame() } {
+        Some(p) => p,
+        None => {
+            println!("Failed to allocate ERST frame");
+            return;
+        }
+    };
+    let erst_virt = (erst_phys.as_u64() | HHDM_OFFSET) as usize;
+    unsafe {
+        let _ = inner_mapper.map_range(memory::addr::VirtAddr::new(erst_virt as u64), memory::addr::PhysAddr::new(erst_phys.as_u64()), PAGE_SIZE, memory::paging::PageTableEntry::WRITABLE);
+    }
+
+    unsafe {
+        let p = erst_virt as *mut u8;
+        (p as *mut u64).write_volatile(evt_phys.as_u64());
+        let seg_size: u32 = (PAGE_SIZE / xhci::ring::trb::BYTES) as u32;
+        (p.add(8) as *mut u32).write_volatile(seg_size);
+        (p.add(12) as *mut u32).write_volatile(0);
+    }
+
+    let mut interrupter = xhci_regs.interrupter_register_set.interrupter_mut(0);
+    interrupter.erstsz.update_volatile(|s| s.set(1));
+    interrupter.erstba.update_volatile(|b| b.set(erst_phys.as_u64()));
+    interrupter.erdp.update_volatile(|d| d.set_event_ring_dequeue_pointer(evt_phys.as_u64()));
+    interrupter.iman.update_volatile(|i| { i.clear_interrupt_pending(); i.set_interrupt_enable(); });
+
+    xhci_operational_regs.crcr.update_volatile(|c| {
+        c.set_command_ring_pointer(cmd_phys.as_u64());
+        c.set_ring_cycle_state();
+    });
+
+    let trb_addr = cmd_virt as *mut u32;
+    unsafe {
+        use xhci::ring::trb::command::EnableSlot;
+        let mut trb = EnableSlot::new();
+        trb.set_cycle_bit();
+        let raw = trb.into_raw();
+        trb_addr.write_volatile(raw[0]);
+        trb_addr.add(1).write_volatile(raw[1]);
+        trb_addr.add(2).write_volatile(raw[2]);
+        trb_addr.add(3).write_volatile(raw[3]);
+    }
+
+    xhci_operational_regs.crcr.update_volatile(|c| {
+        c.set_command_ring_pointer(cmd_phys.as_u64());
+        c.set_ring_cycle_state();
+    });
 }

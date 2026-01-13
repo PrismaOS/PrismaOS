@@ -68,6 +68,7 @@ impl PageTable {
 
 static mut KERNEL_PAGE_TABLE: *mut PageTable = null_mut();
 
+#[derive(Clone, Copy)]
 pub struct OSMapper {
     page_table: *mut PageTable,
 }

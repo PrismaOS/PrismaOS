@@ -46,8 +46,8 @@ mod shell;
 use ahci;
 use galleon2::{ GalleonFilesystem, FilesystemStats };
 use luminal;
-use pci::init_pci;
-use usb;
+use pci;
+use usb::init_usb;
 use spin::Mutex;
 
 // Global filesystem instance
@@ -112,11 +112,9 @@ unsafe extern "C" fn kmain() -> ! {
     kprintln!("");
     */
 
-    // Init PCI dirver
-    kprintln!("PciAccess {:?}", init_pci());
-
     // Init IDE driver
     // TODO: Determine if an IDE drive is present before initializing
+    init_usb();
     kprintln!("Initializing IDE driver...");
     ide_initialize();
     kprintln!("IDE driver initialized.");
@@ -218,7 +216,7 @@ unsafe extern "C" fn kmain() -> ! {
                     kprintln!("Continuing without filesystem (storage may not be available)");
                     // Continue with rest of kernel initialization instead of halting
                     // Initialize USB subsystem
-                    init::usb::init_usb();
+                    //init::usb::init_usb();
 
                     #[cfg(test)]
                     test_main();

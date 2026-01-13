@@ -11,7 +11,7 @@ pub mod paging;
 pub mod addr;
 pub mod dma;
 pub mod frame_allocator;
-//pub mod mmio;
+pub mod mmio;
 
 pub use allocator::{init_heap, HEAP_SIZE, HEAP_START, heap_stats};
 //pub use mmio::{XhciMmioMapper, init_mmio_mapping, mmio_stats};
