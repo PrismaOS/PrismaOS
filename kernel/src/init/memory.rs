@@ -25,16 +25,17 @@ pub fn init_memory_and_heap() -> Result<(), &'static str> {
             let phys_mem_offset = x86_64::VirtAddr::new(hhdm_response.offset());
             kprintln!("[OK] Physical memory offset: {:#x}", phys_mem_offset.as_u64());
 
+            
             let memory_map = MEMORY_MAP_REQUEST.get_response().expect("Memory map response missing, fuck you limine");
             let (mut mapper, mut frame_allocator) = memory::init_memory(memory_map);
-
+            
             kprintln!("[INFO] Initializing kernel heap: {} MiB at {:#x}", memory::HEAP_SIZE / (1024 * 1024), memory::HEAP_START);
             match memory::init_heap(&mut mapper, &mut frame_allocator) {
                 Ok(_) => {
                     kprintln!("[OK] Kernel heap initialized with proper virtual memory mapping");
                     let stats = memory::heap_stats();
                     kprintln!("     Heap size: {} MiB, Start: {:#x}", stats.total_size / (1024 * 1024), memory::HEAP_START);
-                    
+
                     // TEST: Try basic allocations to verify heap works
                     kprintln!("[TEST] Testing heap allocations...");
                     use alloc::vec::Vec;

@@ -61,32 +61,33 @@ pub fn init_heap(
         total_pages, HEAP_SIZE / (1024 * 1024));
 
     let mut allocated_pages = 0u64;
-
+    
     // Map each page of the heap to physical memory
     for page in page_range {
         let frame = frame_allocator
-            .allocate_frame()
-            .ok_or_else(|| {
-                crate::kprintln!("[HEAP ERROR] Failed to allocate frame after {} pages!", allocated_pages);
-                crate::kprintln!("[HEAP ERROR] Needed {} total pages, got {} pages",
-                    total_pages, allocated_pages);
-                MapToError::FrameAllocationFailed
-            })?;
+        .allocate_frame()
+        .ok_or_else(|| {
+            crate::kprintln!("[HEAP ERROR] Failed to allocate frame after {} pages!", allocated_pages);
+            crate::kprintln!("[HEAP ERROR] Needed {} total pages, got {} pages",
+            total_pages, allocated_pages);
+            MapToError::FrameAllocationFailed
+        })?;
         let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
         unsafe {
             let flush_result = mapper.map_to(page, frame, flags, frame_allocator)?;
             flush_result.flush();
         };
         allocated_pages += 1;
-
+        
         // Progress indicator every 1000 pages
         if allocated_pages % 1000 == 0 {
             crate::kprintln!("[HEAP] Allocated {} / {} pages...", allocated_pages, total_pages);
         }
+                            
     }
 
     crate::kprintln!("[HEAP] Successfully allocated all {} pages", allocated_pages);
-
+    
     // Test write to verify pages are actually writable
     crate::kprintln!("[HEAP] Testing heap write access...");
     unsafe {
@@ -102,38 +103,44 @@ pub fn init_heap(
 
     // Initialize the Talc allocator
     crate::kprintln!("[HEAP] Initializing Talc allocator at {:#x} with {} bytes",
-        HEAP_START, HEAP_SIZE);
-
+    HEAP_START, HEAP_SIZE);
+    
     unsafe {
         let heap_ptr = HEAP_START as *mut u8;
-
+        
         // Debug: Verify alignment
         crate::kprintln!("[HEAP DEBUG] Heap pointer: {:#x}, alignment check: {}",
-            heap_ptr as usize,
-            (heap_ptr as usize) % core::mem::align_of::<usize>());
-
+        heap_ptr as usize,
+        (heap_ptr as usize) % core::mem::align_of::<usize>());
+        
         let span = Span::new(heap_ptr, heap_ptr.add(HEAP_SIZE));
         crate::kprintln!("[HEAP DEBUG] Span created: base={:#x}, acme={:#x}, size={}",
-            heap_ptr as usize, heap_ptr.add(HEAP_SIZE) as usize, HEAP_SIZE);
-
+        heap_ptr as usize, heap_ptr.add(HEAP_SIZE) as usize, HEAP_SIZE);
+        
         let claim_result = ALLOCATOR.lock().claim(span);
-
+        
         let claimed_span = claim_result.map_err(|_| {
             MapToError::FrameAllocationFailed
         })?;
-
+        
         // Store the actual claimed size for stats
         CLAIMED_HEAP_SIZE.store(claimed_span.size(), core::sync::atomic::Ordering::Relaxed);
     }
-
+    
     crate::kprintln!("[HEAP] Talc allocator initialized: {} MiB",
-        HEAP_SIZE / (1024 * 1024));
-
+    HEAP_SIZE / (1024 * 1024));
+    
     // Debug: Test initial allocator state
     crate::kprintln!("[HEAP DEBUG] Testing initial allocator state...");
     let test_stats = heap_stats();
     crate::kprintln!("[HEAP DEBUG] Initial stats: total={}, used={}, free={}",
-        test_stats.total_size, test_stats.used_size, test_stats.free_size);
+    test_stats.total_size, test_stats.used_size, test_stats.free_size);
+
+           
+    // TODO this triple faults beffore the fn result can be returned
+    loop {
+        x86_64::instructions::hlt();
+    }
 
     Ok(())
 }
